@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Monitoring Stok Kafe</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+<script>
+
+  (function () {
+    var role = sessionStorage.getItem("role");
+    if (role !== "admin" && role !== "monitor") {
+      location.replace("login.html");
+      return;
+    }
+    if (role === "monitor") document.documentElement.classList.add("role-monitor");
+  })();
+</script>
+</head>
+<body>
+
+  <div id="toast-container" class="toast-container"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-text">
+        <h1>Saung Inspirasi</h1>
+        <p>Monitoring stok bahan kafe</p>
+      </div>
+    </div>
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="dashboard" role="tab" aria-selected="true">Dashboard</button>
+      <button class="tab-btn" data-tab="status" role="tab" aria-selected="false">Status</button>
+      <button class="tab-btn" data-tab="riwayat" role="tab" aria-selected="false">Riwayat &amp; Laporan</button>
+    </nav>
+    <div class="user-box">
+      <span id="role-badge" class="role-badge"></span>
+      <button id="btn-logout" class="btn btn-outline btn-small">Keluar</button>
+    </div>
+  </header>
+
+  <main class="app-main">
+    <section id="dashboard" class="tab-panel active">
+
+      <div class="dashboard-grid">
+
+        <div class="dashboard-col">
+          <div class="panel-head">
+            <h2>Stok Bahan</h2>
+          </div>
+          <div id="stok-grid" class="stok-list"></div>
+        </div>
+
+        <div class="dashboard-col">
+          <div class="panel-head panel-head-row">
+            <div>
+              <h2>MENU</h2>            
+            </div>
+            <button id="btn-tambah-menu" class="btn btn-outline btn-small admin-only">+ Tambah Menu</button>
+          </div>
+          <div id="menu-grid" class="menu-list"></div>
+        </div>
+
+      </div>
+
+      
+
+    </section>
+    <section id="status" class="tab-panel">
+
+      <div class="panel-head panel-head-row">
+        <div>
+          <h2>Status Ketersediaan Bahan</h2>
+        </div>
+        <div class="panel-actions admin-only">
+          <button id="btn-reset-stok" class="btn btn-outline btn-danger-outline">Reset Stok</button>
+          <button id="btn-tambah-bahan" class="btn btn-outline">+ Tambah Bahan Baru</button>
+        </div>
+      </div>
+
+      <div class="legend">
+        <span class="legend-item"><i class="dot dot-normal"></i> Normal &gt; 50%</span>
+        <span class="legend-item"><i class="dot dot-warning"></i> Menipis 31–50%</span>
+        <span class="legend-item"><i class="dot dot-danger"></i> Kritis ≤ 30%</span>
+      </div>
+
+      <div id="status-list" class="status-list"></div>
+
+    </section>
+    <section id="riwayat" class="tab-panel">
+
+      <div class="panel-head panel-head-row">
+        <div>
+          <h2>Riwayat Transaksi</h2>
+        </div>
+        <div class="panel-actions no-print">
+          <button id="btn-bersihkan-riwayat" class="btn btn-outline btn-danger-outline admin-only">Bersihkan Riwayat</button>
+          <button id="btn-print" class="btn btn-outline no-print">Cetak</button>
+        </div>
+      </div>
+
+      <div id="laporan-cetak">
+        <div class="print-only print-header">
+          <h2>Laporan Riwayat Transaksi Saung Inspirasi</h2>
+          <p id="print-date"></p>
+        </div>
+        <table class="riwayat-table">
+          <thead>
+            <tr>
+              <th>Waktu</th>
+              <th>Menu</th>
+              <th>Bahan Terpakai</th>
+              <th>Total</th>
+              <th>Status</th>
+              <th class="no-print">Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="riwayat-body">
+          </tbody>
+        </table>
+        <p id="riwayat-empty" class="empty-state">Belum ada transaksi. Buat minuman dari tab Dashboard.</p>
+      </div>
+
+    </section>
+
+  </main>
+
+  <div id="nota-cetak" class="nota-wrap"></div>
+
+  <footer class="watermark">Tugas1 Algoritma dan Pemrograman Farid Nur (059822286)</footer>
+
+  <div id="modal-overlay" class="modal-overlay">
+    <div class="modal">
+      <h3 id="modal-title">Tambah Stok</h3>
+      <label class="modal-label" for="modal-input">Jumlah yang ditambahkan (<span id="modal-unit"></span>)</label>
+      <input id="modal-input" type="number" min="1" placeholder="Contoh: 500" />
+      <div class="modal-actions">
+        <button id="modal-cancel" class="btn btn-outline">Batal</button>
+        <button id="modal-confirm" class="btn btn-primary">Tambahkan</button>
+      </div>
+    </div>
+  </div>
+  <div id="modal-menu-overlay" class="modal-overlay">
+    <div class="modal modal-wide">
+      <h3 id="modal-menu-title">Tambah Menu Baru</h3>
+
+      <label class="modal-label" for="menu-nama-input">Nama Menu</label>
+      <input id="menu-nama-input" type="text" placeholder="Contoh: Kopi Karamel Susu" />
+
+      <label class="modal-label" for="menu-deskripsi-input">Deskripsi Singkat</label>
+      <input id="menu-deskripsi-input" type="text" placeholder="Contoh: Perpaduan karamel dan susu segar" />
+
+      <label class="modal-label" for="menu-harga-input">Harga per Porsi (Rp, opsional)</label>
+      <input id="menu-harga-input" type="number" min="0" step="500" placeholder="Contoh: 25000" />
+
+      <label class="modal-label">Resep (bahan &amp; jumlah per porsi)</label>
+      <div id="resep-rows" class="resep-rows"></div>
+      <button id="btn-tambah-baris-resep" type="button" class="btn btn-outline btn-small btn-full">+ Tambah Bahan ke Resep</button>
+
+      <div class="modal-actions">
+        <button id="modal-menu-cancel" class="btn btn-outline">Batal</button>
+        <button id="modal-menu-confirm" class="btn btn-primary">Simpan Menu</button>
+      </div>
+    </div>
+  </div>
+  <div id="modal-bahan-overlay" class="modal-overlay">
+    <div class="modal">
+      <h3>Tambah Bahan Baru</h3>
+
+      <label class="modal-label" for="bahan-nama-input">Nama Bahan</label>
+      <input id="bahan-nama-input" type="text" placeholder="Contoh: Sirup Vanilla" />
+
+      <label class="modal-label" for="bahan-unit-input">Satuan</label>
+      <select id="bahan-unit-input">
+        <option value="ml">ml</option>
+        <option value="g">g</option>
+        <option value="pcs">pcs</option>
+      </select>
+
+      <label class="modal-label" for="bahan-stok-input">Stok Awal</label>
+      <input id="bahan-stok-input" type="number" min="1" placeholder="Contoh: 500" />
+
+      <div class="modal-actions">
+        <button id="modal-bahan-cancel" class="btn btn-outline">Batal</button>
+        <button id="modal-bahan-confirm" class="btn btn-primary">Tambahkan</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-reset-overlay" class="modal-overlay">
+    <div class="modal">
+      <h3>Reset Stok</h3>
+      <p class="modal-hint">Pilih bahan yang stoknya akan dikosongkan (menjadi 0).</p>
+      <label class="check-row check-all">
+        <input type="checkbox" id="reset-semua" />
+        <span class="check-name">Pilih semua</span>
+      </label>
+      <div id="reset-list" class="check-list"></div>
+      <div class="modal-actions">
+        <button id="modal-reset-cancel" class="btn btn-outline">Batal</button>
+        <button id="modal-reset-confirm" class="btn btn-primary">Reset Terpilih</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
