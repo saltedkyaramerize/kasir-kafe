@@ -1061,12 +1061,98 @@ function initModal() {
 
 
 
-function renderAll() {
+function renderSemua() {
   renderStokGrid();
   renderMenuGrid();
   renderStatusList();
   renderRiwayat();
 }
+
+function renderAll() {
+  renderSemua();
+  jadwalSimpan();
+}
+
+// ===== Database spreadsheet (Google Sheets via Apps Script) =====
+// Isi dengan URL aplikasi web hasil Deploy Apps Script (berakhiran /exec)
+const SHEET_URL = "https://script.google.com/macros/s/AKfycbxD6BeiVnQzTHc81qQ4kNOsDaml98DsGuawVuBNkcxz7Ebk0xYrQVOLkFlK1le55DF2/exec";
+// Harus sama dengan KUNCI di Code.gs
+const SHEET_KEY = "saung-inspirasi-2026";
+
+let siapSimpan = false;
+let timerSimpan = null;
+let sedangSimpan = false;
+let simpanUlang = false;
+
+function sheetAktif() {
+  return SHEET_URL && !SHEET_URL.startsWith("PASTE");
+}
+
+function terapkanData(d) {
+  bahanList = d.bahan;
+  menuList = d.menu;
+  riwayatList = d.riwayat.map((t) => ({ ...t, waktu: new Date(t.waktu), waktuBatal: t.waktuBatal ? new Date(t.waktuBatal) : null }));
+  Object.keys(menuQty).forEach((k) => delete menuQty[k]);
+  menuList.forEach((m) => (menuQty[m.id] = 1));
+}
+
+async function muatDariSpreadsheet() {
+  if (!sheetAktif()) {
+    showToast("URL spreadsheet belum diisi, data hanya tersimpan sementara", "error");
+    return;
+  }
+  try {
+    const res = await fetch(SHEET_URL);
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || "Gagal membaca");
+
+    if (json.data.kosong) {
+      // Pertama kali dipakai: isi spreadsheet dengan data awal
+      siapSimpan = true;
+      if (isAdmin()) await simpanSekarang();
+      return;
+    }
+    terapkanData(json.data);
+    siapSimpan = true;
+    renderSemua();
+  } catch (err) {
+    console.error(err);
+    showToast("Gagal terhubung ke spreadsheet. Perubahan tidak akan disimpan.", "error");
+  }
+}
+
+function jadwalSimpan() {
+  if (!sheetAktif() || !siapSimpan || !isAdmin()) return;
+  clearTimeout(timerSimpan);
+  timerSimpan = setTimeout(simpanSekarang, 600);
+}
+
+async function simpanSekarang() {
+  if (sedangSimpan) {
+    simpanUlang = true;
+    return;
+  }
+  sedangSimpan = true;
+  try {
+    const res = await fetch(SHEET_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ kunci: SHEET_KEY, data: { bahan: bahanList, menu: menuList, riwayat: riwayatList } }),
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || "Gagal menyimpan");
+  } catch (err) {
+    console.error(err);
+    showToast("Gagal menyimpan ke spreadsheet", "error");
+  } finally {
+    sedangSimpan = false;
+    if (simpanUlang) {
+      simpanUlang = false;
+      simpanSekarang();
+    }
+  }
+}
+
 
 
 
@@ -1077,5 +1163,8 @@ document.addEventListener("DOMContentLoaded", () => {
   initModal();
   
   
-  renderAll();
+  renderSemua();
+  muatDariSpreadsheet();
+  // Mode monitoring: segarkan data dari spreadsheet tiap 15 detik
+  if (!isAdmin()) setInterval(muatDariSpreadsheet, 15000);
 });
