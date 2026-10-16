@@ -1,0 +1,17 @@
+{
+  "name": "Saung Inspirasi — Monitoring Stok Kafe",
+  "short_name": "Saung Inspirasi",
+  "description": "Monitoring stok bahan kafe Saung Inspirasi",
+  "lang": "id",
+  "start_url": "./login.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FCF4DF",
+  "theme_color": "#1E140F",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
