@@ -787,7 +787,7 @@ button:focus-visible, input:focus-visible{
 }
 
 
-/* ===== Harga, aksi menu, reset per bahan, pembatalan pesanan ===== */
+
 .menu-row-actions{
   display:flex;
   align-items:center;
@@ -849,7 +849,7 @@ button:focus-visible, input:focus-visible{
 .trx-total{ white-space: nowrap; }
 
 
-/* ===== Nota pembelian ===== */
+
 .nota-wrap{ display:none; }
 
 .nota{
@@ -883,11 +883,11 @@ button:focus-visible, input:focus-visible{
   body.mode-nota .nota-wrap *{ visibility: visible; }
 }
 
-/* ===== Aksi riwayat ===== */
+
 .trx-aksi{ white-space: nowrap; }
 .trx-aksi .btn + .btn{ margin-left: 6px; }
 
-/* ===== Tampilan ponsel ===== */
+
 @media (max-width: 640px){
   html{ -webkit-text-size-adjust: 100%; }
 
@@ -961,7 +961,7 @@ button:focus-visible, input:focus-visible{
   .brand-text p{ display: none; }
 }
 
-/* Riwayat jadi kartu di ponsel (hanya layar, bukan saat cetak) */
+
 @media screen and (max-width: 640px){
   .riwayat-table,
   .riwayat-table tbody,
@@ -1010,3 +1010,77 @@ button:focus-visible, input:focus-visible{
   .riwayat-table td.trx-aksi .btn{ flex: 1 1 calc(50% - 8px); min-height: 42px; margin: 0; }
   .riwayat-table td.trx-aksi .trx-note{ margin: 0; }
 }
+
+
+
+.riwayat-table tr.hari-row td{
+  background: var(--surface-raised);
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.hari-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+.hari-title{
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.hari-badge{
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: 999px;
+  vertical-align: middle;
+}
+.hari-sum{
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+@media screen and (max-width: 640px){
+  .riwayat-table tbody tr.hari-row{
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    margin: 18px 0 8px;
+  }
+  .riwayat-table tbody tr.hari-row:first-child{ margin-top: 0; }
+  .riwayat-table tbody tr.hari-row td{
+    background: transparent;
+    padding: 0 2px;
+    border-bottom: none;
+  }
+}
+
+@media print{
+  .riwayat-table tr.hari-row td{ background: #ddd; color:#000; }
+  .hari-title{ color:#000; }
+  .hari-sum{ color:#333; }
+  .hari-badge{ display:none; }
+  .riwayat-table tr.hari-row{ break-after: avoid; }
+}
+
+
+
+.hari-right{
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.nota-pilih-list{ max-height: 50vh; overflow-y: auto; }
+.check-row .check-name small{ display: inline-block; margin-top: 2px; }
+
+.nota-item + .nota-item{ margin-top: 8px; }

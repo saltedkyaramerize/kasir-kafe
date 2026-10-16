@@ -7,7 +7,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css" />
 <script>
-  
   if (sessionStorage.getItem("role")) location.replace("index.html");
 </script>
 </head>
@@ -23,7 +22,7 @@
       </div>
 
       <form id="login-form" autocomplete="off">
-        <label class="modal-label" for="login-password">Password Admin</label>
+        <label class="modal-label" for="login-password">Password</label>
         <input id="login-password" type="password" placeholder="Masukkan password" />
         <button type="submit" class="btn btn-primary btn-full-solid">Masuk sebagai Admin</button>
       </form>
@@ -33,9 +32,6 @@
       <button id="btn-monitor" type="button" class="btn btn-outline btn-full-solid">Masuk sebagai Monitoring</button>
     </div>
   </main>
-
-  <footer class="watermark">Algoritma dan Pemrograman Farid Nur (059822286)</footer>
-
   <script>
     const ADMIN_PASSWORD = "111";
 

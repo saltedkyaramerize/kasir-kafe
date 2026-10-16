@@ -96,6 +96,7 @@
         </div>
         <div class="panel-actions no-print">
           <button id="btn-bersihkan-riwayat" class="btn btn-outline btn-danger-outline admin-only">Bersihkan Riwayat</button>
+          <button id="btn-export-excel" class="btn btn-outline admin-only">Ekspor Excel</button>
           <button id="btn-print" class="btn btn-outline no-print">Cetak</button>
         </div>
       </div>
@@ -108,7 +109,7 @@
         <table class="riwayat-table">
           <thead>
             <tr>
-              <th>Waktu</th>
+              <th>Jam</th>
               <th>Menu</th>
               <th>Bahan Terpakai</th>
               <th>Total</th>
@@ -127,8 +128,6 @@
   </main>
 
   <div id="nota-cetak" class="nota-wrap"></div>
-
-  <footer class="watermark">Tugas1 Algoritma dan Pemrograman Farid Nur (059822286)</footer>
 
   <div id="modal-overlay" class="modal-overlay">
     <div class="modal">
@@ -204,6 +203,23 @@
     </div>
   </div>
 
+  <div id="modal-nota-overlay" class="modal-overlay">
+    <div class="modal">
+      <h3 id="modal-nota-judul">Cetak Nota</h3>
+      <p class="modal-hint">Pilih minuman pada hari ini. Semua yang dipilih akan digabung dalam satu nota.</p>
+      <label class="check-row check-all">
+        <input type="checkbox" id="nota-semua" checked />
+        <span class="check-name">Pilih semua</span>
+      </label>
+      <div id="nota-list" class="check-list nota-pilih-list"></div>
+      <div class="modal-actions">
+        <button id="modal-nota-cancel" class="btn btn-outline">Batal</button>
+        <button id="modal-nota-confirm" class="btn btn-primary">Cetak Nota</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

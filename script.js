@@ -1,5 +1,3 @@
-const BIN_ID = "6ac30946ac6210605a13e869"; 
-const API_KEY = "$2a$10$/Wab0N9YUFAb/3ZGVwMHiOVsiXzU2IbLpFXj839OwQiIRXsD.bMiW"; 
 
 let bahanList = [
   { id: "susu",    nama: "Susu UHT",           unit: "ml", awal: 1000, stok: 1000 },
@@ -33,74 +31,11 @@ const ROLE = sessionStorage.getItem("role") === "admin" ? "admin" : "monitor";
 function isAdmin() {
   return ROLE === "admin";
 }
-
-// Pengaman tambahan: mode monitoring tidak boleh mengubah data
 function requireAdmin() {
   if (isAdmin()) return true;
   showToast("Mode monitoring hanya bisa melihat data", "error");
   return false;
 }
-
-function simpanKeCloud() {
-  if (!isAdmin()) return; // monitoring tidak pernah menulis data
-  if (BIN_ID === "MASUKKAN_BIN_ID_ANDA_DISINI") return; // Jangan kirim kalau belum diatur
-  
-  const dataCloud = {
-    bahanList,
-    menuList,
-    riwayatList
-  };
-
-  fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Master-Key": API_KEY
-    },
-    body: JSON.stringify(dataCloud)
-  }).catch(err => console.error("Gagal simpan online:", err));
-}
-
-function muatDariCloud(callback) {
-  if (BIN_ID === "MASUKKAN_BIN_ID_ANDA_DISINI") {
-    if (callback) callback();
-    return;
-  }
-
-  fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
-    headers: {
-      "X-Master-Key": API_KEY
-    }
-  })
-  .then(res => res.json())
-  .then(data => {
-    if (data && data.record) {
-      if (data.record.bahanList) bahanList = data.record.bahanList;
-      if (data.record.menuList) {
-        menuList = data.record.menuList;
-        menuList.forEach((m) => {
-          if (!menuQty[m.id]) menuQty[m.id] = 1;
-        });
-      }
-      if (data.record.riwayatList) {
-        riwayatList = data.record.riwayatList.map(r => ({
-          ...r,
-          id: r.id || "trx-" + new Date(r.waktu).getTime(),
-          status: r.status || "selesai",
-          waktu: new Date(r.waktu),
-          waktuBatal: r.waktuBatal ? new Date(r.waktuBatal) : null
-        }));
-      }
-    }
-    if (callback) callback();
-  })
-  .catch(err => {
-    console.error("Gagal memuat dari online:", err);
-    if (callback) callback();
-  });
-}
-
-
 
 function getBahan(id) {
   return bahanList.find((b) => b.id === id);
@@ -131,6 +66,25 @@ function formatWaktu(date) {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+  });
+}
+
+function formatJam(date) {
+  return new Date(date).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+}
+
+// Kunci hari berdasarkan tanggal lokal (bukan UTC), format YYYY-MM-DD
+function kunciHari(date) {
+  const d = new Date(date);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function formatHari(date) {
+  return new Date(date).toLocaleDateString("id-ID", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
   });
 }
 
@@ -288,7 +242,6 @@ function hapusMenu(menuId) {
   delete menuQty[menuId];
 
   showToast(`Menu "${menu.nama}" telah dihapus`, "success");
-  simpanKeCloud();
   renderAll();
 }
 
@@ -347,7 +300,6 @@ function buatMinuman(menuId) {
   });
 
   showToast(`${menu.nama} (${qty} porsi) berhasil dibuat`, "success");
-  simpanKeCloud();
   renderAll();
 }
 
@@ -434,7 +386,6 @@ function konfirmasiReset() {
 
   tutupModalReset();
   showToast(`Stok ${target.length} bahan telah dikosongkan`, "success");
-  simpanKeCloud();
   renderAll();
 }
 
@@ -469,7 +420,6 @@ function hapusBahan(bahanId) {
   });
 
   showToast(`Bahan "${bahan.nama}" telah dihapus`, "success");
-  simpanKeCloud();
   renderAll();
 }
 
@@ -508,7 +458,6 @@ function konfirmasiTambahStok() {
   bahan.stok += jumlah;
   showToast(`${bahan.nama} bertambah ${formatAngka(jumlah)} ${bahan.unit}`, "success");
   tutupModal();
-  simpanKeCloud();
   renderAll();
 }
 
@@ -654,7 +603,6 @@ function simpanMenuBaru() {
     showToast(`Menu "${nama}" berhasil ditambahkan`, "success");
   }
 
-  simpanKeCloud();
   renderAll();
 }
 
@@ -691,7 +639,6 @@ function simpanBahanBaru() {
 
   tutupModalBahan();
   showToast(`Bahan "${nama}" berhasil ditambahkan`, "success");
-  simpanKeCloud();
   renderAll();
 }
 
@@ -708,7 +655,50 @@ function renderRiwayat() {
   }
   emptyState.style.display = "none";
 
-  riwayatList.forEach((trx) => {
+  // Urutkan terbaru dulu, lalu kelompokkan per hari
+  const urut = [...riwayatList].sort((a, b) => new Date(b.waktu) - new Date(a.waktu));
+  const ringkasan = {};
+  urut.forEach((trx) => {
+    const k = kunciHari(trx.waktu);
+    if (!ringkasan[k]) ringkasan[k] = { selesai: 0, batal: 0, total: 0 };
+    if (trx.status === "dibatalkan") {
+      ringkasan[k].batal += 1;
+    } else {
+      ringkasan[k].selesai += 1;
+      ringkasan[k].total += Number(trx.total) || 0;
+    }
+  });
+
+  const kunciHariIni = kunciHari(new Date());
+  let kunciTerakhir = null;
+
+  urut.forEach((trx) => {
+    const kunci = kunciHari(trx.waktu);
+    if (kunci !== kunciTerakhir) {
+      kunciTerakhir = kunci;
+      const r = ringkasan[kunci];
+      let info = `${r.selesai} transaksi`;
+      if (r.total > 0) info += ` · ${formatRupiah(r.total)}`;
+      if (r.batal > 0) info += ` · ${r.batal} dibatalkan`;
+
+      const head = document.createElement("tr");
+      head.className = "hari-row";
+      head.innerHTML = `
+        <td colspan="6">
+          <div class="hari-head">
+            <div class="hari-title">${formatHari(trx.waktu)}${
+              kunci === kunciHariIni ? ' <span class="hari-badge">Hari ini</span>' : ""
+            }</div>
+            <div class="hari-right">
+              <span class="hari-sum">${info}</span>
+              ${r.selesai > 0 ? `<button type="button" class="btn btn-outline btn-small no-print" data-nota-hari="${kunci}">Cetak Nota</button>` : ""}
+            </div>
+          </div>
+        </td>
+      `;
+      body.appendChild(head);
+    }
+
     const batal = trx.status === "dibatalkan";
     const bahanHtml = trx.bahanTerpakai
       .map((b) => `<span class="used-item">${b.nama} -${formatAngka(Number(b.jumlah))}${b.unit}</span>`)
@@ -729,7 +719,7 @@ function renderRiwayat() {
     const row = document.createElement("tr");
     if (batal) row.className = "trx-batal";
     row.innerHTML = `
-      <td data-label="Waktu">${formatWaktu(new Date(trx.waktu))}</td>
+      <td data-label="Jam">${formatJam(trx.waktu)}</td>
       <td data-label="Menu">${trx.menuNama}</td>
       <td data-label="Bahan Terpakai">${bahanHtml}</td>
       <td data-label="Total" class="trx-total">${totalTeks}</td>
@@ -744,7 +734,11 @@ function renderRiwayat() {
   });
 
   body.querySelectorAll("button[data-nota-id]").forEach((btn) => {
-    btn.addEventListener("click", () => cetakNota(btn.dataset.notaId));
+    btn.addEventListener("click", () => cetakNota([btn.dataset.notaId]));
+  });
+
+  body.querySelectorAll("button[data-nota-hari]").forEach((btn) => {
+    btn.addEventListener("click", () => bukaModalNota(btn.dataset.notaHari));
   });
 }
 
@@ -774,21 +768,35 @@ function batalkanPesanan(trxId) {
   if (tidakAda.length > 0) {
     showToast(`Bahan sudah dihapus dan tidak bisa dikembalikan: ${tidakAda.join(", ")}`, "error");
   }
-  simpanKeCloud();
   renderAll();
 }
 
 // ===== Cetak nota pembelian =====
-function cetakNota(trxId) {
-  const trx = riwayatList.find((t) => t.id === trxId);
-  if (!trx) return;
+function buatHtmlNota(daftar) {
+  const urut = [...daftar].sort((x, y) => new Date(x.waktu) - new Date(y.waktu));
+  const terakhir = urut[urut.length - 1];
+  const noNota = "#" + String(urut[0].id).replace(/^trx-/, "").slice(-8).toUpperCase();
 
-  const qty = trx.qty || 1;
-  const namaMenu = String(trx.menuNama).replace(/\s×\s\d+$/, "");
-  const adaHarga = trx.harga > 0;
-  const noNota = "#" + String(trx.id).replace(/^trx-/, "").slice(-8).toUpperCase();
+  const adaHargaApaPun = urut.some((t) => t.harga > 0);
+  const totalSemua = urut.reduce((sum, t) => sum + (t.harga > 0 ? Number(t.total) || 0 : 0), 0);
 
-  document.getElementById("nota-cetak").innerHTML = `
+  const itemHtml = urut
+    .map((trx) => {
+      const qty = trx.qty || 1;
+      const namaMenu = String(trx.menuNama).replace(/\s×\s\d+$/, "");
+      const adaHarga = trx.harga > 0;
+      return `
+      <div class="nota-item">
+        <div class="nota-item-name">${namaMenu}</div>
+        <div class="nota-row">
+          <span>${qty} × ${adaHarga ? formatRupiah(trx.harga) : "-"}</span>
+          <span>${adaHarga ? formatRupiah(trx.total) : "-"}</span>
+        </div>
+      </div>`;
+    })
+    .join("");
+
+  return `
     <div class="nota">
       <div class="nota-head">
         <h2>Saung Inspirasi</h2>
@@ -796,28 +804,139 @@ function cetakNota(trxId) {
       </div>
       <div class="nota-meta">
         <div><span>No. Nota</span><span>${noNota}</span></div>
-        <div><span>Waktu</span><span>${formatWaktu(new Date(trx.waktu))}</span></div>
+        <div><span>Waktu</span><span>${formatWaktu(new Date(terakhir.waktu))}</span></div>
       </div>
       <hr class="nota-line" />
-      <div class="nota-item">
-        <div class="nota-item-name">${namaMenu}</div>
-        <div class="nota-row">
-          <span>${qty} × ${adaHarga ? formatRupiah(trx.harga) : "-"}</span>
-          <span>${adaHarga ? formatRupiah(trx.total) : "-"}</span>
-        </div>
-      </div>
+      ${itemHtml}
       <hr class="nota-line" />
       <div class="nota-row nota-total">
         <span>TOTAL</span>
-        <span>${adaHarga ? formatRupiah(trx.total) : "-"}</span>
+        <span>${adaHargaApaPun ? formatRupiah(totalSemua) : "-"}</span>
       </div>
       <hr class="nota-line" />
       <p class="nota-foot">Terima kasih atas kunjungan Anda</p>
     </div>
   `;
+}
 
+// Cetak satu nota yang berisi satu atau beberapa transaksi (array id)
+function cetakNota(trxIds) {
+  const ids = Array.isArray(trxIds) ? trxIds : [trxIds];
+  const daftar = ids
+    .map((id) => riwayatList.find((t) => t.id === id))
+    .filter(Boolean);
+  if (daftar.length === 0) return;
+
+  document.getElementById("nota-cetak").innerHTML = buatHtmlNota(daftar);
   document.body.classList.add("mode-nota");
   window.print();
+}
+
+// ===== Pilih nota yang dicetak per hari =====
+let hariAktifNota = null;
+
+function transaksiNotaHari(kunci) {
+  return riwayatList
+    .filter((t) => t.status !== "dibatalkan" && kunciHari(t.waktu) === kunci)
+    .sort((a, b) => new Date(a.waktu) - new Date(b.waktu));
+}
+
+function bukaModalNota(kunci) {
+  const daftar = transaksiNotaHari(kunci);
+  if (daftar.length === 0) {
+    showToast("Tidak ada transaksi untuk dicetak pada hari ini", "error");
+    return;
+  }
+  hariAktifNota = kunci;
+
+  document.getElementById("modal-nota-judul").textContent = `Cetak Nota — ${formatHari(daftar[0].waktu)}`;
+  document.getElementById("nota-list").innerHTML = daftar
+    .map((t) => {
+      const total = t.harga > 0 ? formatRupiah(t.total) : "-";
+      return `
+      <label class="check-row">
+        <input type="checkbox" class="nota-check" value="${t.id}" checked />
+        <span class="check-name">${t.menuNama}<br /><small class="check-info">${formatJam(t.waktu)}</small></span>
+        <span class="check-info">${total}</span>
+      </label>`;
+    })
+    .join("");
+  document.getElementById("nota-semua").checked = true;
+  document.getElementById("modal-nota-overlay").classList.add("open");
+}
+
+function tutupModalNota() {
+  document.getElementById("modal-nota-overlay").classList.remove("open");
+  hariAktifNota = null;
+}
+
+function konfirmasiCetakNota() {
+  const terpilih = Array.from(document.querySelectorAll("#nota-list .nota-check:checked")).map((c) => c.value);
+  if (terpilih.length === 0) {
+    showToast("Pilih minimal satu minuman yang akan dicetak notanya", "error");
+    return;
+  }
+  tutupModalNota();
+  cetakNota(terpilih);
+}
+
+// ===== Ekspor riwayat ke Excel =====
+function eksporExcel() {
+  if (!requireAdmin()) return;
+
+  const aktif = riwayatList.filter((t) => t.status !== "dibatalkan");
+  if (aktif.length === 0) {
+    showToast("Tidak ada transaksi untuk diekspor", "error");
+    return;
+  }
+
+  // Kelompokkan per tanggal (terbaru dulu), baris per transaksi: Item, Harga, Jumlah
+  const urut = [...aktif].sort((a, b) => new Date(b.waktu) - new Date(a.waktu));
+  const perHari = new Map();
+  urut.forEach((t) => {
+    const k = kunciHari(t.waktu);
+    if (!perHari.has(k)) perHari.set(k, { waktu: t.waktu, baris: [] });
+    perHari.get(k).baris.push([
+      String(t.menuNama).replace(/\s×\s\d+$/, ""),
+      Number(t.harga) || 0,
+      Number(t.qty) || 1,
+    ]);
+  });
+
+  const d = new Date();
+  const stempel = kunciHari(d);
+
+  if (typeof XLSX === "undefined") {
+    // Cadangan bila pustaka Excel gagal dimuat (mis. offline): CSV yang bisa dibuka di Excel
+    const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
+    const baris = [["Item", "Harga", "Jumlah"]];
+    perHari.forEach((g) => g.baris.forEach((r) => baris.push(r)));
+    const csv = "\ufeff" + baris.map((r) => r.map(esc).join(",")).join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `Riwayat-Saung-Inspirasi-${stempel}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    showToast("Pustaka Excel tidak termuat, riwayat diekspor sebagai CSV", "error");
+    return;
+  }
+
+  const wb = XLSX.utils.book_new();
+  perHari.forEach((g) => {
+    const ws = XLSX.utils.aoa_to_sheet([["Item", "Harga", "Jumlah"], ...g.baris]);
+    ws["!cols"] = [{ wch: 32 }, { wch: 14 }, { wch: 10 }];
+    for (let i = 1; i <= g.baris.length; i++) {
+      const cell = ws["B" + (i + 1)];
+      if (cell) cell.z = "#,##0";
+    }
+    const w = new Date(g.waktu);
+    const nama = `${String(w.getDate()).padStart(2, "0")}-${String(w.getMonth() + 1).padStart(2, "0")}-${w.getFullYear()}`;
+    XLSX.utils.book_append_sheet(wb, ws, nama);
+  });
+
+  XLSX.writeFile(wb, `Riwayat-Saung-Inspirasi-${stempel}.xlsx`);
+  showToast("Riwayat berhasil diekspor ke Excel", "success");
 }
 
 function bersihkanRiwayat() {
@@ -833,7 +952,6 @@ function bersihkanRiwayat() {
   riwayatList = [];
 
   showToast("Riwayat transaksi telah dibersihkan", "success");
-  simpanKeCloud();
   renderAll();
 }
 
@@ -906,6 +1024,7 @@ function initModal() {
   document.getElementById("btn-tambah-bahan").addEventListener("click", bukaModalTambahBahan);
   document.getElementById("btn-reset-stok").addEventListener("click", resetStok);
   document.getElementById("btn-bersihkan-riwayat").addEventListener("click", bersihkanRiwayat);
+  document.getElementById("btn-export-excel").addEventListener("click", eksporExcel);
 
   document.getElementById("modal-reset-cancel").addEventListener("click", tutupModalReset);
   document.getElementById("modal-reset-confirm").addEventListener("click", konfirmasiReset);
@@ -919,6 +1038,19 @@ function initModal() {
     const semua = document.querySelectorAll("#reset-list .reset-check");
     const aktif = document.querySelectorAll("#reset-list .reset-check:checked");
     document.getElementById("reset-semua").checked = semua.length > 0 && semua.length === aktif.length;
+  });
+  document.getElementById("modal-nota-cancel").addEventListener("click", tutupModalNota);
+  document.getElementById("modal-nota-confirm").addEventListener("click", konfirmasiCetakNota);
+  document.getElementById("modal-nota-overlay").addEventListener("click", (e) => {
+    if (e.target.id === "modal-nota-overlay") tutupModalNota();
+  });
+  document.getElementById("nota-semua").addEventListener("change", (e) => {
+    document.querySelectorAll("#nota-list .nota-check").forEach((c) => (c.checked = e.target.checked));
+  });
+  document.getElementById("nota-list").addEventListener("change", () => {
+    const semua = document.querySelectorAll("#nota-list .nota-check");
+    const aktif = document.querySelectorAll("#nota-list .nota-check:checked");
+    document.getElementById("nota-semua").checked = semua.length > 0 && semua.length === aktif.length;
   });
   document.getElementById("modal-bahan-cancel").addEventListener("click", tutupModalBahan);
   document.getElementById("modal-bahan-confirm").addEventListener("click", simpanBahanBaru);
@@ -945,14 +1077,5 @@ document.addEventListener("DOMContentLoaded", () => {
   initModal();
   
   
-  muatDariCloud(() => {
-    renderAll();
-  });
-
-  
-  setInterval(() => {
-    muatDariCloud(() => {
-      renderAll();
-    });
-  }, 5000);
+  renderAll();
 });
