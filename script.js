@@ -1,12 +1,12 @@
 
-let bahanList = [
+const DEFAULT_BAHAN = [
   { id: "susu",    nama: "Susu UHT",           unit: "ml", awal: 1000, stok: 1000 },
   { id: "kopi",    nama: "Biji Kopi",          unit: "g",  awal: 1000, stok: 1000 },
   { id: "gula",    nama: "Gula Aren Cair",     unit: "ml", awal: 1000, stok: 1000 },
   { id: "creamer", nama: "Non-Dairy Creamer",  unit: "g",  awal: 1000, stok: 1000 },
 ];
 
-let menuList = [
+const DEFAULT_MENU = [
   {
     id: "kopi-inspirasi",
     nama: "Kopi Inspirasi",
@@ -20,9 +20,18 @@ let menuList = [
   },
 ];
 
-let riwayatList = []; 
-const menuQty = {}; 
-menuList.forEach((m) => (menuQty[m.id] = 1));
+
+
+
+let bahanList = [];
+let menuList = [];
+let riwayatList = [];
+const menuQty = {};
+
+
+let keranjang = []; // { menuId, qty }
+let metodeBayar = "cash";
+const METODE_LABEL = { cash: "Cash", qris: "QRIS", kasbon: "Kasbon" };
 
 
 
@@ -73,7 +82,7 @@ function formatJam(date) {
   return new Date(date).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
 }
 
-// Kunci hari berdasarkan tanggal lokal (bukan UTC), format YYYY-MM-DD
+
 function kunciHari(date) {
   const d = new Date(date);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -86,6 +95,20 @@ function formatHari(date) {
     month: "long",
     year: "numeric",
   });
+}
+
+function esc(text) {
+  return String(text == null ? "" : text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function teksPembayaran(trx) {
+  if (!trx.metode) return "-";
+  const label = METODE_LABEL[trx.metode] || trx.metode;
+  return trx.metode === "kasbon" && trx.pelanggan ? `${label} - ${trx.pelanggan}` : label;
 }
 
 function slugify(text, existingIds) {
@@ -166,7 +189,7 @@ function renderMenuGrid() {
       .join("");
 
     const qty = menuQty[menu.id] || 1;
-    const bisaDibuat = bisaDibuatMenu(menu, qty);
+    const bisaDibuat = bisaDitambah(menu.id, qty);
 
     const row = document.createElement("div");
     row.className = "menu-row";
@@ -190,7 +213,7 @@ function renderMenuGrid() {
           <button type="button" class="qty-btn" data-qty-action="plus" data-menu-id="${menu.id}">+</button>
         </div>
         <button class="btn btn-primary btn-small" data-menu-id="${menu.id}" ${bisaDibuat ? "" : "disabled"}>
-          ${bisaDibuat ? "Buat Minuman" : "Stok Tidak Cukup"}
+          ${bisaDibuat ? "+ Keranjang" : "Stok Tidak Cukup"}
         </button>
       </div>
     `;
@@ -198,7 +221,7 @@ function renderMenuGrid() {
   });
 
   grid.querySelectorAll("button[data-menu-id]:not([data-qty-action])").forEach((btn) => {
-    btn.addEventListener("click", () => buatMinuman(btn.dataset.menuId));
+    btn.addEventListener("click", () => tambahKeKeranjang(btn.dataset.menuId));
   });
 
   grid.querySelectorAll("button[data-qty-action]").forEach((btn) => {
@@ -255,55 +278,252 @@ function updateMenuCardState(menuId) {
 
   const btn = document.querySelector(`button[data-menu-id="${menuId}"]:not([data-qty-action])`);
   if (!btn) return;
-  const bisaDibuat = bisaDibuatMenu(menu, qty);
+  const bisaDibuat = bisaDitambah(menu.id, qty);
   btn.disabled = !bisaDibuat;
-  btn.textContent = bisaDibuat ? "Buat Minuman" : "Stok Tidak Cukup";
+  btn.textContent = bisaDibuat ? "+ Keranjang" : "Stok Tidak Cukup";
 }
 
 
 
-function buatMinuman(menuId) {
+// ===== Keranjang & pembayaran =====
+function kebutuhanBahan(items) {
+  const perlu = {};
+  items.forEach((it) => {
+    const menu = menuList.find((m) => m.id === it.menuId);
+    if (!menu) return;
+    menu.resep.forEach((r) => {
+      perlu[r.bahanId] = (perlu[r.bahanId] || 0) + r.jumlah * it.qty;
+    });
+  });
+  return perlu;
+}
+
+// Nama bahan yang stoknya tidak cukup untuk seluruh isi "items" (digabung antar menu)
+function bahanKurang(items) {
+  const perlu = kebutuhanBahan(items);
+  return Object.keys(perlu)
+    .filter((id) => {
+      const b = getBahan(id);
+      return !b || b.stok < perlu[id];
+    })
+    .map((id) => (getBahan(id) || { nama: id }).nama);
+}
+
+function qtyDiKeranjang(menuId) {
+  const it = keranjang.find((i) => i.menuId === menuId);
+  return it ? it.qty : 0;
+}
+
+function itemsDenganTambahan(menuId, qty) {
+  const items = keranjang.filter((i) => i.menuId !== menuId);
+  items.push({ menuId, qty: qtyDiKeranjang(menuId) + qty });
+  return items;
+}
+
+function bisaDitambah(menuId, qty) {
+  return bahanKurang(itemsDenganTambahan(menuId, qty)).length === 0;
+}
+
+function tambahKeKeranjang(menuId) {
   if (!requireAdmin()) return;
   const menu = menuList.find((m) => m.id === menuId);
   if (!menu) return;
 
   const qty = menuQty[menuId] || 1;
-  const kurang = menu.resep.filter((r) => {
-    const bahan = getBahan(r.bahanId);
-    return !bahan || bahan.stok < r.jumlah * qty;
-  });
-
+  const kurang = bahanKurang(itemsDenganTambahan(menuId, qty));
   if (kurang.length > 0) {
-    const namaKurang = kurang.map((r) => (getBahan(r.bahanId) || { nama: r.bahanId }).nama).join(", ");
-    showToast(`Stok tidak cukup untuk: ${namaKurang}`, "error");
+    showToast(`Stok tidak cukup untuk: ${kurang.join(", ")}`, "error");
     return;
   }
 
-  const bahanTerpakai = menu.resep.map((r) => {
-    const bahan = getBahan(r.bahanId);
-    const totalPakai = r.jumlah * qty;
-    bahan.stok -= totalPakai;
-    return { bahanId: bahan.id, nama: bahan.nama, jumlah: totalPakai, unit: bahan.unit };
+  const item = keranjang.find((i) => i.menuId === menuId);
+  if (item) item.qty += qty;
+  else keranjang.push({ menuId, qty });
+  menuQty[menuId] = 1;
+
+  showToast(`${menu.nama} × ${qty} masuk keranjang`, "success");
+  renderMenuGrid();
+  renderKeranjang();
+}
+
+function ubahQtyKeranjang(menuId, delta) {
+  const item = keranjang.find((i) => i.menuId === menuId);
+  if (!item) return;
+  if (delta > 0) {
+    const kurang = bahanKurang(itemsDenganTambahan(menuId, delta));
+    if (kurang.length > 0) {
+      showToast(`Stok tidak cukup untuk: ${kurang.join(", ")}`, "error");
+      return;
+    }
+  }
+  item.qty = Math.max(1, item.qty + delta);
+  renderMenuGrid();
+  renderKeranjang();
+}
+
+function hapusDariKeranjang(menuId) {
+  keranjang = keranjang.filter((i) => i.menuId !== menuId);
+  renderMenuGrid();
+  renderKeranjang();
+}
+
+function kosongkanKeranjang() {
+  if (keranjang.length === 0) return;
+  keranjang = [];
+  renderMenuGrid();
+  renderKeranjang();
+}
+
+function totalKeranjang() {
+  return keranjang.reduce((sum, i) => {
+    const menu = menuList.find((m) => m.id === i.menuId);
+    return sum + (menu ? (menu.harga || 0) * i.qty : 0);
+  }, 0);
+}
+
+function renderKeranjang() {
+  const wadah = document.getElementById("cart-items");
+  if (!wadah) return;
+
+  // Buang item yang menunya sudah dihapus
+  keranjang = keranjang.filter((i) => menuList.some((m) => m.id === i.menuId));
+
+  wadah.innerHTML = keranjang
+    .map((i) => {
+      const menu = menuList.find((m) => m.id === i.menuId);
+      const harga = menu.harga || 0;
+      return `
+      <div class="cart-item">
+        <div class="cart-item-top">
+          <div>
+            <div class="cart-item-name">${menu.nama}</div>
+            <div class="cart-item-price">${harga > 0 ? formatRupiah(harga) : "Harga belum diatur"}</div>
+          </div>
+          <button type="button" class="btn-icon-danger" data-cart-act="hapus" data-cart-id="${menu.id}" title="Hapus dari keranjang">✕</button>
+        </div>
+        <div class="cart-item-bottom">
+          <div class="qty-control">
+            <button type="button" class="qty-btn" data-cart-act="minus" data-cart-id="${menu.id}" ${i.qty <= 1 ? "disabled" : ""}>−</button>
+            <span class="cart-qty">${i.qty}</span>
+            <button type="button" class="qty-btn" data-cart-act="plus" data-cart-id="${menu.id}">+</button>
+          </div>
+          <span class="cart-subtotal">${harga > 0 ? formatRupiah(harga * i.qty) : "-"}</span>
+        </div>
+      </div>`;
+    })
+    .join("");
+
+  const jumlah = keranjang.reduce((n, i) => n + i.qty, 0);
+  const total = totalKeranjang();
+
+  document.getElementById("cart-empty").style.display = keranjang.length ? "none" : "block";
+  document.getElementById("cart-count").textContent = jumlah;
+  document.getElementById("cart-total").textContent = formatRupiah(total);
+  document.getElementById("btn-checkout").disabled = keranjang.length === 0;
+
+  const fab = document.getElementById("cart-fab");
+  fab.hidden = keranjang.length === 0;
+  document.getElementById("cart-fab-count").textContent = jumlah;
+  document.getElementById("cart-fab-total").textContent = formatRupiah(total);
+}
+
+function checkout() {
+  if (!requireAdmin()) return;
+  if (keranjang.length === 0) {
+    showToast("Keranjang masih kosong", "error");
+    return;
+  }
+
+  const metode = metodeBayar;
+  const inputNama = document.getElementById("kasbon-nama");
+  const pelanggan = inputNama.value.trim();
+  if (metode === "kasbon" && !pelanggan) {
+    showToast("Isi nama pelanggan untuk kasbon", "error");
+    inputNama.focus();
+    return;
+  }
+
+  // Cek ulang stok untuk seluruh keranjang sebelum ada bahan yang dikurangi
+  const kurang = bahanKurang(keranjang);
+  if (kurang.length > 0) {
+    showToast(`Stok tidak cukup untuk: ${kurang.join(", ")}`, "error");
+    renderMenuGrid();
+    renderKeranjang();
+    return;
+  }
+
+  const waktu = new Date();
+  const orderId = "ord-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  let total = 0;
+
+  keranjang.forEach((item) => {
+    const menu = menuList.find((m) => m.id === item.menuId);
+    const qty = item.qty;
+
+    const bahanTerpakai = menu.resep.map((r) => {
+      const bahan = getBahan(r.bahanId);
+      const totalPakai = r.jumlah * qty;
+      bahan.stok -= totalPakai;
+      return { bahanId: bahan.id, nama: bahan.nama, jumlah: totalPakai, unit: bahan.unit };
+    });
+
+    const harga = menu.harga || 0;
+    total += harga * qty;
+    riwayatList.unshift({
+      id: "trx-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      orderId,
+      waktu,
+      menuNama: qty > 1 ? `${menu.nama} × ${qty}` : menu.nama,
+      qty,
+      harga,
+      total: harga * qty,
+      metode,
+      pelanggan: metode === "kasbon" ? pelanggan : "",
+      bahanTerpakai,
+      status: "selesai",
+      waktuBatal: null,
+    });
   });
 
-  const harga = menu.harga || 0;
-  riwayatList.unshift({
-    id: "trx-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-    waktu: new Date(),
-    menuNama: qty > 1 ? `${menu.nama} × ${qty}` : menu.nama,
-    qty,
-    harga,
-    total: harga * qty,
-    bahanTerpakai,
-    status: "selesai",
-    waktuBatal: null,
-  });
+  keranjang = [];
+  inputNama.value = "";
 
-  showToast(`${menu.nama} (${qty} porsi) berhasil dibuat`, "success");
+  const info = total > 0 ? ` · ${formatRupiah(total)}` : "";
+  if (metode === "kasbon") {
+    showToast(`Pesanan dicatat sebagai kasbon atas nama ${pelanggan}${info}`, "success");
+  } else {
+    showToast(`Pesanan dibayar via ${METODE_LABEL[metode]}${info}`, "success");
+  }
   renderAll();
 }
 
+function initCart() {
+  document.getElementById("cart-items").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-cart-act]");
+    if (!btn || !requireAdmin()) return;
+    const id = btn.dataset.cartId;
+    const act = btn.dataset.cartAct;
+    if (act === "plus") ubahQtyKeranjang(id, 1);
+    else if (act === "minus") ubahQtyKeranjang(id, -1);
+    else if (act === "hapus") hapusDariKeranjang(id);
+  });
 
+  document.querySelectorAll('input[name="metode"]').forEach((radio) => {
+    radio.addEventListener("change", () => {
+      if (!radio.checked) return;
+      metodeBayar = radio.value;
+      const wrap = document.getElementById("kasbon-wrap");
+      wrap.hidden = metodeBayar !== "kasbon";
+      if (metodeBayar === "kasbon") document.getElementById("kasbon-nama").focus();
+    });
+  });
+
+  document.getElementById("btn-checkout").addEventListener("click", checkout);
+  document.getElementById("btn-kosongkan-keranjang").addEventListener("click", kosongkanKeranjang);
+  document.getElementById("cart-fab").addEventListener("click", () => {
+    document.getElementById("cart-panel").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
 
 function renderStatusList() {
   const list = document.getElementById("status-list");
@@ -649,14 +869,17 @@ function renderRiwayat() {
   const emptyState = document.getElementById("riwayat-empty");
   body.innerHTML = "";
 
-  if (riwayatList.length === 0) {
+  // Monitoring tidak melihat pesanan yang dibatalkan
+  const sumber = isAdmin() ? riwayatList : riwayatList.filter((t) => t.status !== "dibatalkan");
+
+  if (sumber.length === 0) {
     emptyState.style.display = "block";
     return;
   }
   emptyState.style.display = "none";
 
   // Urutkan terbaru dulu, lalu kelompokkan per hari
-  const urut = [...riwayatList].sort((a, b) => new Date(b.waktu) - new Date(a.waktu));
+  const urut = [...sumber].sort((a, b) => new Date(b.waktu) - new Date(a.waktu));
   const ringkasan = {};
   urut.forEach((trx) => {
     const k = kunciHari(trx.waktu);
@@ -716,13 +939,17 @@ function renderRiwayat() {
       : `<button class="btn btn-outline btn-small" data-nota-id="${trx.id}">Cetak Nota</button>
          <button class="btn btn-outline btn-small btn-danger-outline admin-only" data-batal-id="${trx.id}">Batalkan</button>`;
 
+    const metodeHtml = trx.metode
+      ? `<div class="trx-note">${esc(teksPembayaran(trx))}</div>`
+      : "";
+
     const row = document.createElement("tr");
     if (batal) row.className = "trx-batal";
     row.innerHTML = `
       <td data-label="Jam">${formatJam(trx.waktu)}</td>
       <td data-label="Menu">${trx.menuNama}</td>
       <td data-label="Bahan Terpakai">${bahanHtml}</td>
-      <td data-label="Total" class="trx-total">${totalTeks}</td>
+      <td data-label="Total" class="trx-total">${totalTeks}${metodeHtml}</td>
       <td data-label="Status">${statusHtml}</td>
       <td data-label="" class="trx-aksi no-print">${aksiHtml}</td>
     `;
@@ -796,6 +1023,17 @@ function buatHtmlNota(daftar) {
     })
     .join("");
 
+  const metodeSet = new Set(urut.map((t) => t.metode).filter(Boolean));
+  let metaBayarHtml = "";
+  if (metodeSet.size === 1) {
+    const m = [...metodeSet][0];
+    metaBayarHtml = `<div><span>Pembayaran</span><span>${esc(METODE_LABEL[m] || m)}</span></div>`;
+    if (m === "kasbon") {
+      const p = urut.find((t) => t.pelanggan);
+      if (p) metaBayarHtml += `<div><span>Pelanggan</span><span>${esc(p.pelanggan)}</span></div>`;
+    }
+  }
+
   return `
     <div class="nota">
       <div class="nota-head">
@@ -805,6 +1043,7 @@ function buatHtmlNota(daftar) {
       <div class="nota-meta">
         <div><span>No. Nota</span><span>${noNota}</span></div>
         <div><span>Waktu</span><span>${formatWaktu(new Date(terakhir.waktu))}</span></div>
+        ${metaBayarHtml}
       </div>
       <hr class="nota-line" />
       ${itemHtml}
@@ -884,34 +1123,37 @@ function konfirmasiCetakNota() {
 function eksporExcel() {
   if (!requireAdmin()) return;
 
+  // Pesanan yang dibatalkan tidak dihitung sebagai penjualan
   const aktif = riwayatList.filter((t) => t.status !== "dibatalkan");
   if (aktif.length === 0) {
     showToast("Tidak ada transaksi untuk diekspor", "error");
     return;
   }
 
-  // Kelompokkan per tanggal (terbaru dulu), baris per transaksi: Item, Harga, Jumlah
-  const urut = [...aktif].sort((a, b) => new Date(b.waktu) - new Date(a.waktu));
-  const perHari = new Map();
-  urut.forEach((t) => {
-    const k = kunciHari(t.waktu);
-    if (!perHari.has(k)) perHari.set(k, { waktu: t.waktu, baris: [] });
-    perHari.get(k).baris.push([
+  const pad = (n) => String(n).padStart(2, "0");
+  const teksWaktu = (v) => {
+    const d = new Date(v);
+    return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  // Satu tabel berisi seluruh riwayat (terbaru dulu)
+  const header = ["Waktu", "Item", "Harga", "Jumlah", "Pembayaran"];
+  const baris = [...aktif]
+    .sort((a, b) => new Date(b.waktu) - new Date(a.waktu))
+    .map((t) => [
+      teksWaktu(t.waktu),
       String(t.menuNama).replace(/\s×\s\d+$/, ""),
       Number(t.harga) || 0,
       Number(t.qty) || 1,
+      teksPembayaran(t),
     ]);
-  });
 
-  const d = new Date();
-  const stempel = kunciHari(d);
+  const stempel = kunciHari(new Date());
 
   if (typeof XLSX === "undefined") {
     // Cadangan bila pustaka Excel gagal dimuat (mis. offline): CSV yang bisa dibuka di Excel
-    const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
-    const baris = [["Item", "Harga", "Jumlah"]];
-    perHari.forEach((g) => g.baris.forEach((r) => baris.push(r)));
-    const csv = "\ufeff" + baris.map((r) => r.map(esc).join(",")).join("\r\n");
+    const esc2 = (v) => `"${String(v).replace(/"/g, '""')}"`;
+    const csv = "\ufeff" + [header, ...baris].map((r) => r.map(esc2).join(",")).join("\r\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -922,19 +1164,14 @@ function eksporExcel() {
     return;
   }
 
+  const ws = XLSX.utils.aoa_to_sheet([header, ...baris]);
+  ws["!cols"] = [{ wch: 18 }, { wch: 32 }, { wch: 14 }, { wch: 10 }, { wch: 24 }];
+  for (let i = 2; i <= baris.length + 1; i++) {
+    const cell = ws["C" + i];
+    if (cell) cell.z = "#,##0";
+  }
   const wb = XLSX.utils.book_new();
-  perHari.forEach((g) => {
-    const ws = XLSX.utils.aoa_to_sheet([["Item", "Harga", "Jumlah"], ...g.baris]);
-    ws["!cols"] = [{ wch: 32 }, { wch: 14 }, { wch: 10 }];
-    for (let i = 1; i <= g.baris.length; i++) {
-      const cell = ws["B" + (i + 1)];
-      if (cell) cell.z = "#,##0";
-    }
-    const w = new Date(g.waktu);
-    const nama = `${String(w.getDate()).padStart(2, "0")}-${String(w.getMonth() + 1).padStart(2, "0")}-${w.getFullYear()}`;
-    XLSX.utils.book_append_sheet(wb, ws, nama);
-  });
-
+  XLSX.utils.book_append_sheet(wb, ws, "Riwayat");
   XLSX.writeFile(wb, `Riwayat-Saung-Inspirasi-${stempel}.xlsx`);
   showToast("Riwayat berhasil diekspor ke Excel", "success");
 }
@@ -957,13 +1194,39 @@ function bersihkanRiwayat() {
 
 
 
+// Hapus sisa data lama (session/local storage & cache data dari database) agar tidak tampil di sesi berikutnya.
+async function bersihkanCacheData() {
+  try { sessionStorage.clear(); } catch (e) {}
+  try {
+    Object.keys(localStorage)
+      .filter((k) => k.indexOf("saung") === 0)
+      .forEach((k) => localStorage.removeItem(k));
+  } catch (e) {}
+  try {
+    if ("caches" in window) {
+      const names = await caches.keys();
+      await Promise.all(names.map(async (n) => {
+        const c = await caches.open(n);
+        const reqs = await c.keys();
+        await Promise.all(reqs
+          .filter((r) => {
+            const host = new URL(r.url).hostname;
+            return host === "script.google.com" || host.endsWith("googleusercontent.com");
+          })
+          .map((r) => c.delete(r)));
+      }));
+    }
+  } catch (e) {}
+}
+
 function initAuth() {
   const badge = document.getElementById("role-badge");
   badge.textContent = isAdmin() ? "Admin" : "Monitoring (hanya lihat)";
   if (isAdmin()) badge.classList.add("is-admin");
 
-  document.getElementById("btn-logout").addEventListener("click", () => {
-    sessionStorage.removeItem("role");
+  document.getElementById("btn-logout").addEventListener("click", async () => {
+    keranjang = [];
+    await bersihkanCacheData();
     location.replace("login.html");
   });
 }
@@ -974,22 +1237,45 @@ function initTabs() {
   const tabButtons = document.querySelectorAll(".tab-btn");
   const panels = document.querySelectorAll(".tab-panel");
 
-  tabButtons.forEach((btn) => {
+  function aktifkan(btn) {
+    tabButtons.forEach((b) => {
+      b.classList.remove("active");
+      b.setAttribute("aria-selected", "false");
+    });
+    panels.forEach((p) => p.classList.remove("active"));
+
+    btn.classList.add("active");
+    btn.setAttribute("aria-selected", "true");
+    document.getElementById(btn.dataset.tab).classList.add("active");
+
+    // Tab monitoring "Dashboard" (stok) dan "Menu" memakai panel Dashboard dengan sub-panel berbeda
+    if (btn.dataset.sub) {
+      document.querySelectorAll(".subpanel").forEach((p) => p.classList.toggle("active", p.id === btn.dataset.sub));
+    }
+  }
+
+  tabButtons.forEach((btn) => btn.addEventListener("click", () => aktifkan(btn)));
+
+  // Monitoring: mulai dari "Dashboard" yang menampilkan stok bahan
+  if (!isAdmin()) aktifkan(document.querySelector('.tab-btn.monitor-only[data-sub="sub-stok"]'));
+}
+
+function initSubtabs() {
+  const buttons = document.querySelectorAll(".subnav-btn");
+  const panels = document.querySelectorAll(".subpanel");
+  buttons.forEach((btn) => {
     btn.addEventListener("click", () => {
-      tabButtons.forEach((b) => {
+      buttons.forEach((b) => {
         b.classList.remove("active");
         b.setAttribute("aria-selected", "false");
       });
       panels.forEach((p) => p.classList.remove("active"));
-
       btn.classList.add("active");
       btn.setAttribute("aria-selected", "true");
-      document.getElementById(btn.dataset.tab).classList.add("active");
+      document.getElementById(btn.dataset.subtab).classList.add("active");
     });
   });
 }
-
-
 
 function initPrint() {
   window.addEventListener("afterprint", () => document.body.classList.remove("mode-nota"));
@@ -1064,6 +1350,7 @@ function initModal() {
 function renderSemua() {
   renderStokGrid();
   renderMenuGrid();
+  renderKeranjang();
   renderStatusList();
   renderRiwayat();
 }
@@ -1096,28 +1383,92 @@ function terapkanData(d) {
   menuList.forEach((m) => (menuQty[m.id] = 1));
 }
 
+function dataAwal() {
+  return {
+    bahan: JSON.parse(JSON.stringify(DEFAULT_BAHAN)),
+    menu: JSON.parse(JSON.stringify(DEFAULT_MENU)),
+    riwayat: [],
+  };
+}
+
+async function ambilDariSpreadsheet() {
+  // Parameter unik + no-store agar tidak pernah memakai respons dari cache
+  const sep = SHEET_URL.indexOf("?") === -1 ? "?" : "&";
+  const res = await fetch(`${SHEET_URL}${sep}_=${Date.now()}`, { cache: "no-store" });
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error || "Gagal membaca");
+  return json.data;
+}
+
+// Memuat data terbaru lalu merender. Melempar error bila gagal (tidak merender data lama/bawaan).
 async function muatDariSpreadsheet() {
   if (!sheetAktif()) {
+    terapkanData(dataAwal());
+    renderSemua();
     showToast("URL spreadsheet belum diisi, data hanya tersimpan sementara", "error");
     return;
   }
-  try {
-    const res = await fetch(SHEET_URL);
-    const json = await res.json();
-    if (!json.ok) throw new Error(json.error || "Gagal membaca");
 
-    if (json.data.kosong) {
-      // Pertama kali dipakai: isi spreadsheet dengan data awal
-      siapSimpan = true;
-      if (isAdmin()) await simpanSekarang();
-      return;
-    }
-    terapkanData(json.data);
+  const data = await ambilDariSpreadsheet();
+
+  if (data.kosong) {
+    // Pertama kali dipakai: isi spreadsheet dengan data awal
+    terapkanData(dataAwal());
     siapSimpan = true;
     renderSemua();
+    if (isAdmin()) await simpanSekarang();
+    return;
+  }
+  terapkanData(data);
+  siapSimpan = true;
+  renderSemua();
+}
+
+// ===== Loader "Mohon tunggu sebentar" =====
+function setLoader(state) {
+  const el = document.getElementById("app-loader");
+  el.classList.remove("done");
+  el.classList.toggle("error", state === "error");
+  document.getElementById("loader-text").textContent =
+    state === "error" ? "Gagal memuat data terbaru" : "Mohon tunggu sebentar";
+  document.getElementById("loader-sub").textContent =
+    state === "error" ? "Periksa koneksi internet Anda, lalu coba lagi." : "Mengambil data terbaru…";
+  document.getElementById("loader-retry").hidden = state !== "error";
+}
+
+function sembunyiLoader() {
+  document.getElementById("app-loader").classList.add("done");
+}
+
+let pollingJalan = false;
+let pollingAktif = false;
+
+function mulaiPolling() {
+  if (pollingAktif) return;
+  pollingAktif = true;
+  // Mode monitoring: segarkan data dari spreadsheet tiap 15 detik
+  setInterval(async () => {
+    if (pollingJalan) return;
+    pollingJalan = true;
+    try {
+      await muatDariSpreadsheet();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      pollingJalan = false;
+    }
+  }, 15000);
+}
+
+async function muatAwal() {
+  setLoader("loading");
+  try {
+    await muatDariSpreadsheet();
+    sembunyiLoader();
+    if (!isAdmin() && sheetAktif()) mulaiPolling();
   } catch (err) {
     console.error(err);
-    showToast("Gagal terhubung ke spreadsheet. Perubahan tidak akan disimpan.", "error");
+    setLoader("error");
   }
 }
 
@@ -1159,12 +1510,17 @@ async function simpanSekarang() {
 document.addEventListener("DOMContentLoaded", () => {
   initAuth();
   initTabs();
+  initSubtabs();
   initPrint();
   initModal();
-  
-  
-  renderSemua();
-  muatDariSpreadsheet();
-  // Mode monitoring: segarkan data dari spreadsheet tiap 15 detik
-  if (!isAdmin()) setInterval(muatDariSpreadsheet, 15000);
+  initCart();
+  document.getElementById("loader-retry").addEventListener("click", muatAwal);
+
+  // Jangan render apa pun sebelum data terbaru dari database selesai dimuat.
+  muatAwal();
+});
+
+// Halaman dipulihkan dari cache browser (tombol Kembali): muat ulang agar tidak menampilkan data lama.
+window.addEventListener("pageshow", (e) => {
+  if (e.persisted) location.reload();
 });

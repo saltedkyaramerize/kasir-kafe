@@ -20,6 +20,14 @@
 </head>
 <body>
 
+  <div id="app-loader" class="app-loader" role="status" aria-live="polite" hidden>
+    <div class="loader-box">
+      <div class="spinner" aria-hidden="true"></div>
+      <p class="loader-text">tunggu bentar</p>
+      <p class="loader-sub">Menyiapkan data terbaru…</p>
+    </div>
+  </div>
+
   <div id="toast-container" class="toast-container"></div>
 
   <main class="login-wrap">
@@ -30,12 +38,12 @@
       </div>
 
       <form id="login-form" autocomplete="off">
-        <label class="modal-label" for="login-password">Password</label>
+        <label class="modal-label" for="login-password"></label>
         <input id="login-password" type="password" placeholder="Masukkan password" />
-        <button type="submit" class="btn btn-primary btn-full-solid">Masuk sebagai Admin</button>
+        <button type="submit" class="btn btn-primary btn-full-solid">Masuk Kasir</button>
       </form>
 
-      <div class="login-divider"><span>atau</span></div>
+      <div class="login-divider"><span></span></div>
 
       <button id="btn-monitor" type="button" class="btn btn-outline btn-full-solid">Masuk sebagai Monitoring</button>
     </div>
@@ -52,7 +60,39 @@
       setTimeout(() => toast.remove(), 3000);
     }
 
-    function masuk(role) {
+    
+    async function bersihkanCacheData() {
+      try { sessionStorage.clear(); } catch (e) {}
+      try {
+        Object.keys(localStorage)
+          .filter((k) => k.indexOf("saung") === 0)
+          .forEach((k) => localStorage.removeItem(k));
+      } catch (e) {}
+      try {
+        if ("caches" in window) {
+          const names = await caches.keys();
+          await Promise.all(names.map(async (n) => {
+            const c = await caches.open(n);
+            const reqs = await c.keys();
+            await Promise.all(reqs
+              .filter((r) => {
+                const host = new URL(r.url).hostname;
+                return host === "script.google.com" || host.endsWith("googleusercontent.com");
+              })
+              .map((r) => c.delete(r)));
+          }));
+        }
+      } catch (e) {}
+    }
+
+    let sedangMasuk = false;
+    async function masuk(role) {
+      if (sedangMasuk) return;
+      sedangMasuk = true;
+      
+      document.getElementById("app-loader").hidden = false;
+      document.querySelectorAll("button, input").forEach((el) => (el.disabled = true));
+      await bersihkanCacheData();
       sessionStorage.setItem("role", role);
       location.replace("index.html");
     }

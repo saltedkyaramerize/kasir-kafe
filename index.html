@@ -28,6 +28,15 @@
 </head>
 <body>
 
+  <div id="app-loader" class="app-loader" role="status" aria-live="polite">
+    <div class="loader-box">
+      <div class="spinner" aria-hidden="true"></div>
+      <p id="loader-text" class="loader-text">Mohon tunggu sebentar</p>
+      <p id="loader-sub" class="loader-sub">Mengambil data terbaru…</p>
+      <button id="loader-retry" type="button" class="btn btn-primary btn-small" hidden>Coba lagi</button>
+    </div>
+  </div>
+
   <div id="toast-container" class="toast-container"></div>
 
   <header class="topbar">
@@ -38,9 +47,13 @@
       </div>
     </div>
     <nav class="tabs">
-      <button class="tab-btn active" data-tab="dashboard" role="tab" aria-selected="true">Dashboard</button>
-      <button class="tab-btn" data-tab="status" role="tab" aria-selected="false">Status</button>
-      <button class="tab-btn" data-tab="riwayat" role="tab" aria-selected="false">Riwayat &amp; Laporan</button>
+      <button class="tab-btn active admin-only" data-tab="dashboard" role="tab" aria-selected="true">Dashboard</button>
+      <button class="tab-btn admin-only" data-tab="status" role="tab" aria-selected="false">Status</button>
+      <button class="tab-btn admin-only" data-tab="riwayat" role="tab" aria-selected="false">Riwayat &amp; Laporan</button>
+
+      <button class="tab-btn monitor-only" data-tab="dashboard" data-sub="sub-stok" role="tab" aria-selected="false">Dashboard</button>
+      <button class="tab-btn monitor-only" data-tab="dashboard" data-sub="sub-menu" role="tab" aria-selected="false">Menu</button>
+      <button class="tab-btn monitor-only" data-tab="riwayat" role="tab" aria-selected="false">Riwayat</button>
     </nav>
     <div class="user-box">
       <span id="role-badge" class="role-badge"></span>
@@ -51,28 +64,69 @@
   <main class="app-main">
     <section id="dashboard" class="tab-panel active">
 
-      <div class="dashboard-grid">
+      <nav class="subnav" role="tablist" aria-label="Navigasi dashboard">
+        <button type="button" class="subnav-btn active" data-subtab="sub-menu" role="tab" aria-selected="true">Menu</button>
+        <button type="button" class="subnav-btn" data-subtab="sub-stok" role="tab" aria-selected="false">Stok Bahan</button>
+      </nav>
 
-        <div class="dashboard-col">
-          <div class="panel-head">
-            <h2>Stok Bahan</h2>
-          </div>
-          <div id="stok-grid" class="stok-list"></div>
-        </div>
+      <div id="sub-menu" class="subpanel active">
+        <div class="menu-layout">
 
-        <div class="dashboard-col">
-          <div class="panel-head panel-head-row">
-            <div>
-              <h2>MENU</h2>            
+          <div class="dashboard-col">
+            <div class="panel-head panel-head-row">
+              <h2>Menu</h2>
+              <button id="btn-tambah-menu" class="btn btn-outline btn-small admin-only">+ Tambah Menu</button>
             </div>
-            <button id="btn-tambah-menu" class="btn btn-outline btn-small admin-only">+ Tambah Menu</button>
+            <div id="menu-grid" class="menu-list"></div>
           </div>
-          <div id="menu-grid" class="menu-list"></div>
+
+          <aside id="cart-panel" class="cart-panel admin-only" aria-label="Keranjang">
+            <div class="cart-head">
+              <h2>Keranjang</h2>
+              <span id="cart-count" class="cart-count">0</span>
+            </div>
+
+            <div id="cart-items" class="cart-items"></div>
+            <p id="cart-empty" class="empty-state cart-empty">Keranjang kosong. Tambahkan menu dari daftar.</p>
+
+            <div class="cart-total">
+              <span>Total</span>
+              <strong id="cart-total">Rp 0</strong>
+            </div>
+
+            <div class="cart-pay">
+              <span class="modal-label">Metode pembayaran</span>
+              <div class="pay-options" role="radiogroup" aria-label="Metode pembayaran">
+                <label class="pay-opt"><input type="radio" name="metode" value="cash" checked /><span>Cash</span></label>
+                <label class="pay-opt"><input type="radio" name="metode" value="qris" /><span>QRIS</span></label>
+                <label class="pay-opt"><input type="radio" name="metode" value="kasbon" /><span>Kasbon</span></label>
+              </div>
+              <div id="kasbon-wrap" class="kasbon-wrap" hidden>
+                <label class="modal-label" for="kasbon-nama">Nama pelanggan (wajib untuk kasbon)</label>
+                <input id="kasbon-nama" type="text" maxlength="60" placeholder="Contoh: Pak Budi" />
+              </div>
+            </div>
+
+            <div class="cart-actions">
+              <button id="btn-kosongkan-keranjang" type="button" class="btn btn-outline btn-small">Kosongkan</button>
+              <button id="btn-checkout" type="button" class="btn btn-primary" disabled>Bayar &amp; Buat Pesanan</button>
+            </div>
+          </aside>
+
         </div>
 
+        <button id="cart-fab" type="button" class="cart-fab admin-only" hidden>
+          <span>Lihat Keranjang (<b id="cart-fab-count">0</b>)</span>
+          <strong id="cart-fab-total">Rp 0</strong>
+        </button>
       </div>
 
-      
+      <div id="sub-stok" class="subpanel">
+        <div class="panel-head">
+          <h2>Stok Bahan</h2>
+        </div>
+        <div id="stok-grid" class="stok-list"></div>
+      </div>
 
     </section>
     <section id="status" class="tab-panel">
@@ -103,6 +157,7 @@
           <h2>Riwayat Transaksi</h2>
         </div>
         <div class="panel-actions no-print">
+          <a id="btn-cek-spreadsheet" class="btn btn-outline monitor-only no-print" href="https://docs.google.com/spreadsheets/d/1iHdEND3-1eyew6ErmY4_Fv3NXHk3If0d6e2A8rk0fKw/edit?gid=1065018831#gid=1065018831" target="_blank" rel="noopener noreferrer">Cek Spreadsheet</a>
           <button id="btn-bersihkan-riwayat" class="btn btn-outline btn-danger-outline admin-only">Bersihkan Riwayat</button>
           <button id="btn-export-excel" class="btn btn-outline admin-only">Ekspor Excel</button>
           <button id="btn-print" class="btn btn-outline no-print">Cetak</button>
@@ -128,7 +183,7 @@
           <tbody id="riwayat-body">
           </tbody>
         </table>
-        <p id="riwayat-empty" class="empty-state">Belum ada transaksi. Buat minuman dari tab Dashboard.</p>
+        <p id="riwayat-empty" class="empty-state">Riwayat sudah di ekspor ke spreadsheet</p>
       </div>
 
     </section>
