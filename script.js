@@ -907,7 +907,7 @@ function renderRiwayat() {
       const head = document.createElement("tr");
       head.className = "hari-row";
       head.innerHTML = `
-        <td colspan="6">
+        <td colspan="7">
           <div class="hari-head">
             <div class="hari-title">${formatHari(trx.waktu)}${
               kunci === kunciHariIni ? ' <span class="hari-badge">Hari ini</span>' : ""
@@ -939,17 +939,15 @@ function renderRiwayat() {
       : `<button class="btn btn-outline btn-small" data-nota-id="${trx.id}">Cetak Nota</button>
          <button class="btn btn-outline btn-small btn-danger-outline admin-only" data-batal-id="${trx.id}">Batalkan</button>`;
 
-    const metodeHtml = trx.metode
-      ? `<div class="trx-note">${esc(teksPembayaran(trx))}</div>`
-      : "";
 
     const row = document.createElement("tr");
     if (batal) row.className = "trx-batal";
     row.innerHTML = `
-      <td data-label="Jam">${formatJam(trx.waktu)}</td>
+      <td data-label="Waktu">${formatJam(trx.waktu)}</td>
       <td data-label="Menu">${trx.menuNama}</td>
       <td data-label="Bahan Terpakai">${bahanHtml}</td>
-      <td data-label="Total" class="trx-total">${totalTeks}${metodeHtml}</td>
+      <td data-label="Total" class="trx-total">${totalTeks}</td>
+      <td data-label="Pembayaran">${esc(teksPembayaran(trx))}</td>
       <td data-label="Status">${statusHtml}</td>
       <td data-label="" class="trx-aksi no-print">${aksiHtml}</td>
     `;
@@ -1362,7 +1360,7 @@ function renderAll() {
 
 // ===== Database spreadsheet (Google Sheets via Apps Script) =====
 // Isi dengan URL aplikasi web hasil Deploy Apps Script (berakhiran /exec)
-const SHEET_URL = "https://script.google.com/macros/s/AKfycbxD6BeiVnQzTHc81qQ4kNOsDaml98DsGuawVuBNkcxz7Ebk0xYrQVOLkFlK1le55DF2/exec";
+const SHEET_URL = "https://script.google.com/macros/s/AKfycbwGbKuKQNH4Rg1kn8svWbhbSyC0wQBhSz0EAFq0V0wzQri9TzfIlEIMruc_Kcd-NweN/exec";
 // Harus sama dengan KUNCI di Code.gs
 const SHEET_KEY = "saung-inspirasi-2026";
 
