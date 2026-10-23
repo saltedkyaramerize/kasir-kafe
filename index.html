@@ -48,6 +48,7 @@
     </div>
     <nav class="tabs">
       <button class="tab-btn active admin-only" data-tab="dashboard" role="tab" aria-selected="true">Dashboard</button>
+      <button class="tab-btn admin-only" data-tab="proses" role="tab" aria-selected="false">Proses Pesanan <span id="proses-count" class="tab-badge" hidden>0</span></button>
       <button class="tab-btn admin-only" data-tab="status" role="tab" aria-selected="false">Status</button>
       <button class="tab-btn admin-only" data-tab="riwayat" role="tab" aria-selected="false">Riwayat &amp; Laporan</button>
 
@@ -94,22 +95,9 @@
               <strong id="cart-total">Rp 0</strong>
             </div>
 
-            <div class="cart-pay">
-              <span class="modal-label">Metode pembayaran</span>
-              <div class="pay-options" role="radiogroup" aria-label="Metode pembayaran">
-                <label class="pay-opt"><input type="radio" name="metode" value="cash" checked /><span>Cash</span></label>
-                <label class="pay-opt"><input type="radio" name="metode" value="qris" /><span>QRIS</span></label>
-                <label class="pay-opt"><input type="radio" name="metode" value="kasbon" /><span>Kasbon</span></label>
-              </div>
-              <div id="kasbon-wrap" class="kasbon-wrap" hidden>
-                <label class="modal-label" for="kasbon-nama">Nama pelanggan (wajib untuk kasbon)</label>
-                <input id="kasbon-nama" type="text" maxlength="60" placeholder="Contoh: Pak Budi" />
-              </div>
-            </div>
-
             <div class="cart-actions">
               <button id="btn-kosongkan-keranjang" type="button" class="btn btn-outline btn-small">Kosongkan</button>
-              <button id="btn-checkout" type="button" class="btn btn-primary" disabled>Bayar &amp; Buat Pesanan</button>
+              <button id="btn-checkout" type="button" class="btn btn-primary" disabled>Konfirmasi Pesanan</button>
             </div>
           </aside>
 
@@ -127,6 +115,16 @@
         </div>
         <div id="stok-grid" class="stok-list"></div>
       </div>
+
+    </section>
+    <section id="proses" class="tab-panel">
+
+      <div class="panel-head">
+        <h2>Proses Pesanan</h2>
+      </div>
+
+      <div id="proses-list" class="proses-list"></div>
+      <p id="proses-empty" class="empty-state">Belum ada pesanan yang diproses. Konfirmasi pesanan dari keranjang di tab Dashboard.</p>
 
     </section>
     <section id="status" class="tab-panel">

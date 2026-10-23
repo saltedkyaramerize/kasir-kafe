@@ -30,7 +30,7 @@ const menuQty = {};
 
 
 let keranjang = []; // { menuId, qty }
-let metodeBayar = "cash";
+let pesananProses = []; // pesanan terkonfirmasi, menunggu pembayaran
 const METODE_LABEL = { cash: "Cash", qris: "QRIS", kasbon: "Kasbon" };
 
 
@@ -299,8 +299,22 @@ function kebutuhanBahan(items) {
 }
 
 // Nama bahan yang stoknya tidak cukup untuk seluruh isi "items" (digabung antar menu)
+function kebutuhanProses() {
+  const perlu = {};
+  pesananProses.forEach((p) => {
+    p.resep.forEach((r) => {
+      perlu[r.bahanId] = (perlu[r.bahanId] || 0) + r.jumlah * p.qty;
+    });
+  });
+  return perlu;
+}
+
 function bahanKurang(items) {
   const perlu = kebutuhanBahan(items);
+  const dipesan = kebutuhanProses();
+  Object.keys(dipesan).forEach((id) => {
+    perlu[id] = (perlu[id] || 0) + dipesan[id];
+  });
   return Object.keys(perlu)
     .filter((id) => {
       const b = getBahan(id);
@@ -434,16 +448,7 @@ function checkout() {
     return;
   }
 
-  const metode = metodeBayar;
-  const inputNama = document.getElementById("kasbon-nama");
-  const pelanggan = inputNama.value.trim();
-  if (metode === "kasbon" && !pelanggan) {
-    showToast("Isi nama pelanggan untuk kasbon", "error");
-    inputNama.focus();
-    return;
-  }
-
-  // Cek ulang stok untuk seluruh keranjang sebelum ada bahan yang dikurangi
+  // Cek stok untuk seluruh keranjang (sudah termasuk pesanan yang sedang diproses)
   const kurang = bahanKurang(keranjang);
   if (kurang.length > 0) {
     showToast(`Stok tidak cukup untuk: ${kurang.join(", ")}`, "error");
@@ -454,47 +459,207 @@ function checkout() {
 
   const waktu = new Date();
   const orderId = "ord-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  let total = 0;
+  let jumlah = 0;
 
   keranjang.forEach((item) => {
     const menu = menuList.find((m) => m.id === item.menuId);
-    const qty = item.qty;
-
-    const bahanTerpakai = menu.resep.map((r) => {
-      const bahan = getBahan(r.bahanId);
-      const totalPakai = r.jumlah * qty;
-      bahan.stok -= totalPakai;
-      return { bahanId: bahan.id, nama: bahan.nama, jumlah: totalPakai, unit: bahan.unit };
-    });
-
-    const harga = menu.harga || 0;
-    total += harga * qty;
-    riwayatList.unshift({
-      id: "trx-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    if (!menu) return;
+    jumlah += item.qty;
+    pesananProses.push({
+      id: "prs-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       orderId,
       waktu,
-      menuNama: qty > 1 ? `${menu.nama} × ${qty}` : menu.nama,
-      qty,
-      harga,
-      total: harga * qty,
-      metode,
-      pelanggan: metode === "kasbon" ? pelanggan : "",
-      bahanTerpakai,
-      status: "selesai",
-      waktuBatal: null,
+      menuId: menu.id,
+      menuNama: menu.nama,
+      harga: menu.harga || 0,
+      qty: item.qty,
+      resep: menu.resep.map((r) => ({ bahanId: r.bahanId, jumlah: r.jumlah })),
+      metode: "cash",
+      pelanggan: "",
     });
   });
 
   keranjang = [];
-  inputNama.value = "";
+  showToast(`${jumlah} item masuk ke Proses Pesanan`, "success");
+  renderAll();
+}
 
-  const info = total > 0 ? ` · ${formatRupiah(total)}` : "";
+// ===== Proses Pesanan =====
+// Disimpan di localStorage browser agar tidak hilang saat halaman di-refresh.
+// (Kunci sengaja tidak diawali "saung" supaya tidak ikut terhapus oleh pembersihan cache saat keluar/masuk.)
+const KUNCI_PROSES = "kasir-proses-pesanan";
+
+function simpanProsesLokal() {
+  if (!isAdmin()) return;
+  try {
+    localStorage.setItem(KUNCI_PROSES, JSON.stringify(pesananProses));
+  } catch (e) {}
+}
+
+function muatProsesLokal() {
+  try {
+    const raw = localStorage.getItem(KUNCI_PROSES);
+    if (raw === null) return null;
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return null;
+    return arr.filter((p) => p && p.id && Array.isArray(p.resep)).map((p) => ({ ...p, waktu: new Date(p.waktu) }));
+  } catch (e) {
+    return null;
+  }
+}
+
+function renderProses() {
+  const wadah = document.getElementById("proses-list");
+  if (!wadah) return;
+
+  document.getElementById("proses-empty").style.display = pesananProses.length ? "none" : "block";
+
+  const badge = document.getElementById("proses-count");
+  badge.textContent = pesananProses.length;
+  badge.hidden = pesananProses.length === 0;
+
+  wadah.innerHTML = pesananProses
+    .map((p) => {
+      const subtotal = p.harga > 0 ? formatRupiah(p.harga * p.qty) : "-";
+      const opsi = ["cash", "qris", "kasbon"]
+        .map(
+          (m) => `
+          <label class="pay-opt">
+            <input type="radio" name="metode-${p.id}" value="${m}" data-proses-metode="${p.id}" ${p.metode === m ? "checked" : ""} />
+            <span>${METODE_LABEL[m]}</span>
+          </label>`
+        )
+        .join("");
+      return `
+      <div class="proses-card" data-proses-id="${p.id}">
+        <div class="proses-top">
+          <div>
+            <div class="proses-name">${esc(p.menuNama)} × ${p.qty}</div>
+            <div class="proses-meta">${formatJam(p.waktu)} · ${p.harga > 0 ? formatRupiah(p.harga) + " / porsi" : "Harga belum diatur"}</div>
+          </div>
+          <strong class="proses-total">${subtotal}</strong>
+        </div>
+        <div class="proses-pay">
+          <span class="modal-label">Metode pembayaran</span>
+          <div class="pay-options" role="radiogroup" aria-label="Metode pembayaran">${opsi}</div>
+          <div class="kasbon-wrap" ${p.metode === "kasbon" ? "" : "hidden"}>
+            <label class="modal-label">Nama pelanggan (wajib untuk kasbon)</label>
+            <input type="text" maxlength="60" placeholder="Contoh: Pak Budi" value="${esc(p.pelanggan)}" data-proses-nama="${p.id}" />
+          </div>
+        </div>
+        <div class="proses-actions">
+          <button type="button" class="btn btn-outline btn-small btn-danger-outline" data-proses-act="batal" data-proses-id="${p.id}">Batalkan</button>
+          <button type="button" class="btn btn-primary" data-proses-act="bayar" data-proses-id="${p.id}">Konfirmasi Pembayaran</button>
+        </div>
+      </div>`;
+    })
+    .join("");
+}
+
+function batalkanProses(id) {
+  if (!requireAdmin()) return;
+  const p = pesananProses.find((x) => x.id === id);
+  if (!p) return;
+  if (!confirm(`Batalkan pesanan "${p.menuNama} × ${p.qty}"?`)) return;
+  pesananProses = pesananProses.filter((x) => x.id !== id);
+  showToast("Pesanan dibatalkan", "success");
+  renderAll();
+}
+
+function konfirmasiPembayaran(id) {
+  if (!requireAdmin()) return;
+  const p = pesananProses.find((x) => x.id === id);
+  if (!p) return;
+
+  const metode = p.metode || "cash";
+  const pelanggan = (p.pelanggan || "").trim();
+  if (metode === "kasbon" && !pelanggan) {
+    showToast("Isi nama pelanggan untuk kasbon", "error");
+    const input = document.querySelector(`input[data-proses-nama="${id}"]`);
+    if (input) input.focus();
+    return;
+  }
+
+  // Pastikan stok nyata masih cukup untuk pesanan ini
+  const kurang = p.resep
+    .filter((r) => {
+      const b = getBahan(r.bahanId);
+      return !b || b.stok < r.jumlah * p.qty;
+    })
+    .map((r) => (getBahan(r.bahanId) || { nama: r.bahanId }).nama);
+  if (kurang.length > 0) {
+    showToast(`Stok tidak cukup untuk: ${kurang.join(", ")}`, "error");
+    return;
+  }
+
+  const bahanTerpakai = p.resep.map((r) => {
+    const bahan = getBahan(r.bahanId);
+    const totalPakai = r.jumlah * p.qty;
+    bahan.stok -= totalPakai;
+    return { bahanId: bahan.id, nama: bahan.nama, jumlah: totalPakai, unit: bahan.unit };
+  });
+
+  riwayatList.unshift({
+    id: "trx-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    orderId: p.orderId,
+    waktu: new Date(),
+    menuNama: p.qty > 1 ? `${p.menuNama} × ${p.qty}` : p.menuNama,
+    qty: p.qty,
+    harga: p.harga,
+    total: p.harga * p.qty,
+    metode,
+    pelanggan: metode === "kasbon" ? pelanggan : "",
+    bahanTerpakai,
+    status: "selesai",
+    waktuBatal: null,
+  });
+
+  pesananProses = pesananProses.filter((x) => x.id !== id);
+
+  const info = p.harga > 0 ? ` · ${formatRupiah(p.harga * p.qty)}` : "";
   if (metode === "kasbon") {
-    showToast(`Pesanan dicatat sebagai kasbon atas nama ${pelanggan}${info}`, "success");
+    showToast(`Dicatat sebagai kasbon atas nama ${pelanggan}${info}`, "success");
   } else {
-    showToast(`Pesanan dibayar via ${METODE_LABEL[metode]}${info}`, "success");
+    showToast(`Dibayar via ${METODE_LABEL[metode]}${info}, masuk ke Riwayat`, "success");
   }
   renderAll();
+}
+
+function initProses() {
+  const wadah = document.getElementById("proses-list");
+
+  wadah.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-proses-act]");
+    if (!btn) return;
+    if (btn.dataset.prosesAct === "bayar") konfirmasiPembayaran(btn.dataset.prosesId);
+    else if (btn.dataset.prosesAct === "batal") batalkanProses(btn.dataset.prosesId);
+  });
+
+  // Simpan pilihan di memori tanpa render ulang, agar isian tidak hilang
+  wadah.addEventListener("change", (e) => {
+    const radio = e.target.closest("input[data-proses-metode]");
+    if (!radio || !radio.checked) return;
+    const p = pesananProses.find((x) => x.id === radio.dataset.prosesMetode);
+    if (!p) return;
+    p.metode = radio.value;
+    simpanProsesLokal();
+    jadwalSimpan();
+    const kartu = radio.closest(".proses-card");
+    const wrap = kartu.querySelector(".kasbon-wrap");
+    wrap.hidden = p.metode !== "kasbon";
+    if (p.metode === "kasbon") kartu.querySelector("input[data-proses-nama]").focus();
+  });
+
+  wadah.addEventListener("input", (e) => {
+    const input = e.target.closest("input[data-proses-nama]");
+    if (!input) return;
+    const p = pesananProses.find((x) => x.id === input.dataset.prosesNama);
+    if (p) {
+      p.pelanggan = input.value;
+      simpanProsesLokal();
+      jadwalSimpan();
+    }
+  });
 }
 
 function initCart() {
@@ -506,16 +671,6 @@ function initCart() {
     if (act === "plus") ubahQtyKeranjang(id, 1);
     else if (act === "minus") ubahQtyKeranjang(id, -1);
     else if (act === "hapus") hapusDariKeranjang(id);
-  });
-
-  document.querySelectorAll('input[name="metode"]').forEach((radio) => {
-    radio.addEventListener("change", () => {
-      if (!radio.checked) return;
-      metodeBayar = radio.value;
-      const wrap = document.getElementById("kasbon-wrap");
-      wrap.hidden = metodeBayar !== "kasbon";
-      if (metodeBayar === "kasbon") document.getElementById("kasbon-nama").focus();
-    });
   });
 
   document.getElementById("btn-checkout").addEventListener("click", checkout);
@@ -1349,12 +1504,14 @@ function renderSemua() {
   renderStokGrid();
   renderMenuGrid();
   renderKeranjang();
+  renderProses();
   renderStatusList();
   renderRiwayat();
 }
 
 function renderAll() {
   renderSemua();
+  simpanProsesLokal();
   jadwalSimpan();
 }
 
@@ -1376,6 +1533,19 @@ function sheetAktif() {
 function terapkanData(d) {
   bahanList = d.bahan;
   menuList = d.menu;
+  // Daftar pesanan diproses: spreadsheet jadi acuan utama (sinkron antar perangkat).
+  // Pilihan metode/nama kasbon yang baru diubah dan belum sempat tersimpan diambil dari data lokal.
+  // Bila spreadsheet belum punya sheet "Proses" (field tidak ada), pakai data lokal saja.
+  const lokal = isAdmin() ? muatProsesLokal() : null;
+  if (Array.isArray(d.proses)) {
+    pesananProses = d.proses.map((p) => {
+      const base = { ...p, waktu: new Date(p.waktu) };
+      const l = lokal && lokal.find((x) => x.id === p.id);
+      return l ? { ...base, metode: l.metode || base.metode, pelanggan: l.pelanggan != null ? l.pelanggan : base.pelanggan } : base;
+    });
+  } else {
+    pesananProses = lokal || [];
+  }
   riwayatList = d.riwayat.map((t) => ({ ...t, waktu: new Date(t.waktu), waktuBatal: t.waktuBatal ? new Date(t.waktuBatal) : null }));
   Object.keys(menuQty).forEach((k) => delete menuQty[k]);
   menuList.forEach((m) => (menuQty[m.id] = 1));
@@ -1486,7 +1656,7 @@ async function simpanSekarang() {
     const res = await fetch(SHEET_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ kunci: SHEET_KEY, data: { bahan: bahanList, menu: menuList, riwayat: riwayatList } }),
+      body: JSON.stringify({ kunci: SHEET_KEY, data: { bahan: bahanList, menu: menuList, riwayat: riwayatList, proses: pesananProses } }),
     });
     const json = await res.json();
     if (!json.ok) throw new Error(json.error || "Gagal menyimpan");
@@ -1512,6 +1682,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initPrint();
   initModal();
   initCart();
+  initProses();
   document.getElementById("loader-retry").addEventListener("click", muatAwal);
 
   // Jangan render apa pun sebelum data terbaru dari database selesai dimuat.
