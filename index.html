@@ -215,13 +215,35 @@
       <label class="modal-label" for="menu-harga-input">Harga per Porsi (Rp, opsional)</label>
       <input id="menu-harga-input" type="number" min="0" step="500" placeholder="Contoh: 25000" />
 
+      <label class="modal-label">Gambar Menu</label>
+      <div class="gambar-field">
+        <div id="menu-gambar-preview" class="gambar-preview"><span>Belum ada gambar</span></div>
+        <div class="gambar-actions">
+          <input id="menu-gambar-input" type="file" accept="image/*" hidden />
+          <button id="btn-pilih-gambar" type="button" class="btn btn-outline btn-small">Import Gambar</button>
+          <button id="btn-hapus-gambar" type="button" class="btn btn-outline btn-small btn-danger-outline" hidden>Hapus Gambar</button>
+        </div>
+        <p id="gambar-info" class="modal-hint"></p>
+      </div>
+
       <label class="modal-label">Resep (bahan &amp; jumlah per porsi)</label>
       <div id="resep-rows" class="resep-rows"></div>
       <button id="btn-tambah-baris-resep" type="button" class="btn btn-outline btn-small btn-full">+ Tambah Bahan ke Resep</button>
 
       <div class="modal-actions">
+        <button id="modal-menu-hapus" type="button" class="btn btn-outline btn-danger-outline" hidden>Hapus Menu</button>
         <button id="modal-menu-cancel" class="btn btn-outline">Batal</button>
         <button id="modal-menu-confirm" class="btn btn-primary">Simpan Menu</button>
+      </div>
+    </div>
+  </div>
+  <div id="modal-resep-overlay" class="modal-overlay">
+    <div class="modal">
+      <h3 id="modal-resep-title">Bahan</h3>
+      <p class="modal-hint">Bahan yang dipakai untuk 1 porsi.</p>
+      <ul id="modal-resep-list" class="resep-popup-list"></ul>
+      <div class="modal-actions">
+        <button id="modal-resep-close" type="button" class="btn btn-primary">Tutup</button>
       </div>
     </div>
   </div>

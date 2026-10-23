@@ -1332,3 +1332,107 @@ a.btn{ text-decoration: none; display: inline-block; }
 @media (max-width: 640px){
   .proses-list{ grid-template-columns: minmax(0, 1fr); }
 }
+
+
+/* ===== Kartu menu (admin) ===== */
+.menu-cards{ display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
+.mcard{
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.mcard-name{
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.mcard-price{ margin-top: 3px; font-size: 12.5px; color: var(--text-muted); }
+.mcard-body{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: center; }
+.mcard-img{
+  position: relative;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.mcard-img img{ display: block; width: 100%; height: 100%; object-fit: cover; }
+.mcard-noimg{ width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 38px; opacity: 0.6; }
+.mcard-badge{
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+.mcard-plus{
+  justify-self: center;
+  width: 68px;
+  height: 68px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 42px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.12s ease, opacity 0.15s ease;
+}
+.mcard-plus:active:not(:disabled){ transform: scale(0.92); }
+.mcard-plus:disabled{ opacity: 0.3; cursor: not-allowed; }
+.mcard-foot{ display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.mcard-foot .btn{ font-weight: 700; }
+
+/* Modal menu: gambar */
+.modal-wide{ max-height: 90vh; overflow-y: auto; }
+.gambar-field{ display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 4px; }
+.gambar-preview{
+  width: 96px;
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--surface-alt);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+}
+.gambar-preview img{ width: 100%; height: 100%; object-fit: cover; }
+.gambar-actions{ display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.gambar-actions [hidden], #modal-menu-hapus[hidden]{ display: none !important; }
+.gambar-field .modal-hint{ flex-basis: 100%; margin: 0; }
+#modal-menu-hapus{ margin-right: auto; }
+
+/* Popup bahan */
+.resep-popup-list{ list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.resep-popup-list li{
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  font-size: 14px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}

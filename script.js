@@ -176,7 +176,153 @@ function bisaDibuatMenu(menu, qty) {
   });
 }
 
+// ===== Tampilan kartu menu (khusus admin) =====
+function renderMenuKartu() {
+  const grid = document.getElementById("menu-grid");
+  grid.className = "menu-cards";
+  grid.innerHTML = menuList
+    .map((menu) => {
+      const bisa = bisaDitambah(menu.id, 1);
+      const jml = qtyDiKeranjang(menu.id);
+      const gambar = menu.gambar
+        ? `<img src="${esc(menu.gambar)}" alt="${esc(menu.nama)}" />`
+        : `<div class="mcard-noimg" aria-hidden="true">☕</div>`;
+      return `
+      <article class="mcard">
+        <div class="mcard-head">
+          <h3 class="mcard-name">${esc(menu.nama)}</h3>
+          <p class="mcard-price">${menu.harga > 0 ? formatRupiah(menu.harga) : "Harga belum diatur"}</p>
+        </div>
+        <div class="mcard-body">
+          <div class="mcard-img">
+            ${gambar}
+            ${jml > 0 ? `<span class="mcard-badge" title="Jumlah di keranjang">${jml}</span>` : ""}
+          </div>
+          <button type="button" class="mcard-plus" data-mk="tambah" data-id="${esc(menu.id)}" ${bisa ? "" : "disabled"}
+            aria-label="Tambah ${esc(menu.nama)} ke keranjang" title="${bisa ? "Tambah ke keranjang" : "Stok tidak cukup"}">+</button>
+        </div>
+        <div class="mcard-foot">
+          <button type="button" class="btn btn-outline btn-small" data-mk="ubah" data-id="${esc(menu.id)}">Ubah</button>
+          <button type="button" class="btn btn-outline btn-small" data-mk="bahan" data-id="${esc(menu.id)}">Bahan</button>
+        </div>
+      </article>`;
+    })
+    .join("");
+}
+
+function initMenuKartu() {
+  document.getElementById("menu-grid").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-mk]");
+    if (!btn || !isAdmin()) return;
+    const id = btn.dataset.id;
+    if (btn.dataset.mk === "tambah") tambahKeKeranjang(id);
+    else if (btn.dataset.mk === "ubah") bukaModalMenu(id);
+    else if (btn.dataset.mk === "bahan") bukaModalResep(id);
+  });
+}
+
+function bukaModalResep(menuId) {
+  const menu = menuList.find((m) => m.id === menuId);
+  if (!menu) return;
+  document.getElementById("modal-resep-title").textContent = `Bahan — ${menu.nama}`;
+  document.getElementById("modal-resep-list").innerHTML = menu.resep
+    .map((r) => {
+      const b = getBahan(r.bahanId);
+      return `<li><span>${esc(b ? b.nama : r.bahanId)}</span><strong>${formatAngka(Number(r.jumlah))} ${esc(b ? b.unit : "")}</strong></li>`;
+    })
+    .join("");
+  document.getElementById("modal-resep-overlay").classList.add("open");
+}
+
+function tutupModalResep() {
+  document.getElementById("modal-resep-overlay").classList.remove("open");
+}
+
+// ===== Gambar menu: impor + kompres =====
+let gambarModal = "";
+const BATAS_GAMBAR = 40000; // panjang teks data-URL (batas sel spreadsheet 50.000 karakter)
+
+function bacaGambar(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Gambar tidak bisa dibaca")); };
+    img.src = url;
+  });
+}
+
+// Potong persegi dari tengah, kecilkan, simpan sebagai JPEG sampai cukup ringan
+async function kompresGambar(file) {
+  const img = await bacaGambar(file);
+  const sisi = Math.min(img.naturalWidth, img.naturalHeight);
+  const sx = (img.naturalWidth - sisi) / 2;
+  const sy = (img.naturalHeight - sisi) / 2;
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  let hasil = "";
+  for (const ukuran of [320, 280, 240, 200, 160]) {
+    canvas.width = canvas.height = ukuran;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, ukuran, ukuran);
+    ctx.drawImage(img, sx, sy, sisi, sisi, 0, 0, ukuran, ukuran);
+    for (const q of [0.8, 0.7, 0.6, 0.5, 0.4]) {
+      hasil = canvas.toDataURL("image/jpeg", q);
+      if (hasil.length <= BATAS_GAMBAR) return hasil;
+    }
+  }
+  return hasil.length <= BATAS_GAMBAR ? hasil : "";
+}
+
+function renderPreviewGambar(info) {
+  const kotak = document.getElementById("menu-gambar-preview");
+  kotak.innerHTML = gambarModal ? `<img src="${esc(gambarModal)}" alt="Pratinjau" />` : "<span>Belum ada gambar</span>";
+  document.getElementById("btn-hapus-gambar").hidden = !gambarModal;
+  document.getElementById("gambar-info").textContent =
+    info || (gambarModal ? `Ukuran tersimpan ± ${Math.round((gambarModal.length * 0.75) / 1024)} KB` : "");
+}
+
+function initGambarMenu() {
+  const input = document.getElementById("menu-gambar-input");
+  document.getElementById("btn-pilih-gambar").addEventListener("click", () => input.click());
+  document.getElementById("btn-hapus-gambar").addEventListener("click", () => {
+    gambarModal = "";
+    renderPreviewGambar();
+  });
+  input.addEventListener("change", async () => {
+    const file = input.files && input.files[0];
+    input.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      showToast("File harus berupa gambar", "error");
+      return;
+    }
+    document.getElementById("gambar-info").textContent = "Mengompres gambar…";
+    try {
+      const hasil = await kompresGambar(file);
+      if (!hasil) throw new Error("Terlalu besar");
+      gambarModal = hasil;
+      renderPreviewGambar("Gambar berhasil dikompres ± " + Math.round((hasil.length * 0.75) / 1024) + " KB");
+    } catch (err) {
+      console.error(err);
+      renderPreviewGambar();
+      showToast("Gagal memproses gambar, coba file lain", "error");
+    }
+  });
+
+  document.getElementById("modal-menu-hapus").addEventListener("click", () => {
+    const id = menuAktifEdit;
+    if (!id) return;
+    hapusMenu(id);
+    if (!menuList.some((m) => m.id === id)) tutupModalMenu();
+  });
+}
+
 function renderMenuGrid() {
+  if (isAdmin()) {
+    renderMenuKartu();
+    return;
+  }
   const grid = document.getElementById("menu-grid");
   grid.innerHTML = "";
 
@@ -856,6 +1002,10 @@ function bukaModalMenu(menuId = null) {
   document.getElementById("menu-deskripsi-input").value = menu ? menu.deskripsi : "";
   document.getElementById("menu-harga-input").value = menu && menu.harga > 0 ? menu.harga : "";
 
+  gambarModal = menu && menu.gambar ? menu.gambar : "";
+  renderPreviewGambar();
+  document.getElementById("modal-menu-hapus").hidden = !menu;
+
   document.getElementById("resep-rows").innerHTML = "";
   if (menu) {
     menu.resep.forEach((r) => tambahBarisResep(r));
@@ -873,6 +1023,7 @@ function bukaModalTambahMenu() {
 function tutupModalMenu() {
   document.getElementById("modal-menu-overlay").classList.remove("open");
   menuAktifEdit = null;
+  gambarModal = "";
 }
 
 function tambahBarisResep(data) {
@@ -961,6 +1112,7 @@ function simpanMenuBaru() {
     menuLama.nama = nama;
     menuLama.deskripsi = deskripsi || "Menu racikan baru.";
     menuLama.harga = harga;
+    menuLama.gambar = gambarModal;
     menuLama.resep = resep;
     tutupModalMenu();
     showToast(`Menu "${nama}" berhasil diperbarui`, "success");
@@ -971,6 +1123,7 @@ function simpanMenuBaru() {
       nama,
       deskripsi: deskripsi || "Menu racikan baru.",
       harga,
+      gambar: gambarModal,
       resep,
     });
     menuQty[id] = 1;
@@ -1460,6 +1613,11 @@ function initModal() {
     if (e.target.id === "modal-menu-overlay") tutupModalMenu();
   });
 
+  document.getElementById("modal-resep-close").addEventListener("click", tutupModalResep);
+  document.getElementById("modal-resep-overlay").addEventListener("click", (e) => {
+    if (e.target.id === "modal-resep-overlay") tutupModalResep();
+  });
+
   document.getElementById("btn-tambah-bahan").addEventListener("click", bukaModalTambahBahan);
   document.getElementById("btn-reset-stok").addEventListener("click", resetStok);
   document.getElementById("btn-bersihkan-riwayat").addEventListener("click", bersihkanRiwayat);
@@ -1683,6 +1841,8 @@ document.addEventListener("DOMContentLoaded", () => {
   initModal();
   initCart();
   initProses();
+  initMenuKartu();
+  initGambarMenu();
   document.getElementById("loader-retry").addEventListener("click", muatAwal);
 
   // Jangan render apa pun sebelum data terbaru dari database selesai dimuat.
